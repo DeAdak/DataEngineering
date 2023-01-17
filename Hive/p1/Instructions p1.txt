@@ -1,0 +1,133 @@
+###DATA SET: https://grouplens.org/datasets/movielens/100k/
+Please read the README file first to get some knowledge about the data set
+I will be using 
+u.data -- user id | item id | rating | timestamp
+u.item -- movie id | movie title | release date | video release date | IMDb URL | unknown | Action | Adventure | Animation | Children's | Comedy | Crime | Documentary | Drama | Fantasy | Film-Noir | Horror | Musical | Mystery | Romance | Sci-Fi | Thriller | War | Western |
+u.user -- user id | age | gender | occupation | zip code
+u_cut.data -- user id | item id | rating (timestamp is removed purposufully)
+
+###SET UP
+# start hdfs and yarn first
+$HADOOP_HOME/sbin/start-dfs.sh
+$HADOOP_HOME/sbin/start-yarn.sh
+#start hive from hive directory only
+cd $HIVE_HOME
+./bin/hive
+
+hive> create database if not exists movies;
+hive> dfs -ls /user/hive/warehouse/;
+Found 1 items
+drwxrwxr-x   - deba supergroup          0 2023-01-16 21:58 /user/hive/warehouse/movies.db
+hive> dfs -ls /user/hive/warehouse/movies.db;
+hive>  #Empty
+hive> use movies;
+OK
+Time taken: 0.098 seconds
+hive> show tables;
+OK
+
+###TABLE CREATION (MANAGED TABLE)
+hive>set hive.cli.print.header=true;
+
+create table movie_data(movie_id integer, movie_title string, release_date string, IMDb_URL string, unknown integer, Action integer, Adventure integer, Animation integer, Children_s integer,Comedy integer, Crime integer, Documentary integer, Drama integer, Fantasy integer, Film_Noir integer, Horror integer, Musical integer, Mystery integer, Romance integer, Sci_Fi integer, Thriller integer, War integer, Western integer )
+row format delimited
+fields terminated by '|'
+lines terminated by '\n';
+
+create table user_data(user_id integer , age integer, gender string, occupation string, zip_code integer)
+row format delimited
+fields terminated by '|'
+lines terminated by '\n';
+
+#changed timestamp to t_stamp as timestamp is a reserve word.
+create table user_rating(user_id integer, item_id integer,rating integer, t_stamp string)
+row format delimited
+fields terminated by '\t'
+lines terminated by '\n';
+
+###LOAD DATA TO THE TABLES (On 2nd Terminal)
+hdfs dfs -put /home/deba/Pictures/DataEnginnering/Hive/p1/ml-100k/u.item /user/hive/warehouse/movies.db/movie_data/
+hdfs dfs -put /home/deba/Pictures/DataEnginnering/Hive/p1/ml-100k/u.user /user/hive/warehouse/movies.db/user_data/
+hdfs dfs -put /home/deba/Pictures/DataEnginnering/Hive/p1/ml-100k/u.data /user/hive/warehouse/movies.db/user_rating/
+
+###RUN QUERY TO CHECK
+select * from user_rating;
+select * from  user_data;
+select * from user_rating a inner join user_data b on (a.user_id = b.user_id) limit 5;
+select user_rating .*,user_data.* from movie_data join user_rating on (movie_data.movie_id=user_rating.item_id) join user_data  on (user_rating.user_id =user_data.user_id ) where movie_data.movie_title like '%Titanic%';
+select user_data.occupation,count(*) as total from movie_data join user_rating on (movie_data.movie_id=user_rating.item_id) join user_data  on (user_rating.user_id =user_data.user_id ) where movie_data.movie_title like '%Titanic%' and user_rating.rating = 5 group by user_data.occupation order by total desc;
+
+###TABLE CREATION (EXTERNAL TABLE)
+#Can not use same location to put data for different tables.
+
+create external table movie_data_ext(movie_id integer, movie_title string, release_date string, IMDb_URL string, unknown integer, Action integer, Adventure integer, Animation integer, Children_s integer,Comedy integer, Crime integer, Documentary integer, Drama integer, Fantasy integer, Film_Noir integer, Horror integer, Musical integer, Mystery integer, Romance integer, Sci_Fi integer, Thriller integer, War integer, Western integer )
+row format delimited
+fields terminated by '|'
+lines terminated by '\n'
+location '/user/deba/movie_data_ext';
+
+create table user_data_ext(user_id integer , age integer, gender string, occupation string, zip_code integer)
+row format delimited
+fields terminated by '|'
+lines terminated by '\n'
+location '/user/deba/user_data_ext';
+
+create table user_rating_ext(user_id integer, item_id integer,rating integer, t_stamp string)
+row format delimited
+fields terminated by '\t'
+lines terminated by '\n'
+location '/user/deba/user_rating_ext';
+
+###LOAD DATA TO THE TABLES (On 2nd Terminal)
+hdfs dfs -put /home/deba/Pictures/DataEnginnering/Hive/p1/ml-100k/u.item /user/deba/movie_data_ext
+hdfs dfs -put /home/deba/Pictures/DataEnginnering/Hive/p1/ml-100k/u.user /user/deba/user_data_ext
+hdfs dfs -put /home/deba/Pictures/DataEnginnering/Hive/p1/ml-100k/u.data /tmp
+
+###LOADING DATA FROM HDFS TO EXTERNAL TABLE
+hive> load data inpath '/tmp/u.data' into table user_rating_ext;
+or
+$ hdfs dfs -put /home/deba/Pictures/DataEnginnering/Hive/p1/ml-100k/u.data /user/deba/user_rating_ext
+
+###RUN QUERY TO CHECK
+select * from user_rating_ext;
+select * from  user_data_ext;
+select * from user_rating_ext a inner join user_data_ext b on (a.user_id = b.user_id) limit 5;
+select user_rating_ext.*,user_data_ext.* from movie_data_ext join user_rating_ext on (movie_data_ext.movie_id=user_rating_ext.item_id) join user_data_ext  on (user_rating_ext.user_id =user_data_ext.user_id ) where movie_data_ext.movie_title like '%Titanic%';
+select user_data_ext.occupation,count(*) as total from movie_data_ext join user_rating_ext on (movie_data_ext.movie_id=user_rating_ext.item_id) join user_data_ext  on (user_rating_ext.user_id =user_data_ext.user_id ) where movie_data_ext.movie_title like '%Titanic%' and user_rating_ext.rating = 5 group by user_data_ext.occupation order by total desc;
+
+###TABLE CREATION (EXTERNAL PARTITIONED TABLE)
+set hive.exec.dynamic.partition.mode=nonstrict ; 
+
+create table user_rating_partitioned_ext(user_id integer, item_id integer)
+partitioned by (rating integer)
+row format delimited
+fields terminated by '\t'
+lines terminated by '\n'
+location '/user/deba/user_rating_partitioned_ext';
+
+###LOADING DATA FROM EXTERNAL TABLE TO PARTITIONED EXTERNAL TABLE
+#Last column of the source table will be treated as partitioned column
+insert overwrite table user_rating_partitioned_ext partition(rating) select user_id, item_id, rating from user_rating_ext ;
+
+###RUN QUERY TO CHECK
+select user_data_ext.occupation,count(*) as total from movie_data_ext join user_rating_ext on (movie_data_ext.movie_id=user_rating_ext.item_id) join user_data_ext  on (user_rating_ext.user_id =user_data_ext.user_id ) where movie_data_ext.movie_title like '%Titanic%' and user_rating_ext.rating = 5 group by user_data_ext.occupation order by total desc;
+Time taken: 106.496 seconds, Fetched: 20 row(s)
+
+select user_data_ext.occupation,count(*) as total from movie_data_ext join user_rating_partitioned_ext on (movie_data_ext.movie_id=user_rating_partitioned_ext.item_id) join user_data_ext  on (user_rating_partitioned_ext.user_id =user_data_ext.user_id ) where movie_data_ext.movie_title like '%Titanic%' and user_rating_partitioned_ext.rating = 5 group by user_data_ext.occupation order by total desc;
+Time taken: 111.596 seconds, Fetched: 20 row(s)
+--------------------------
+select * from user_rating_ext a inner join user_data_ext b on (a.user_id = b.user_id) where a.rating = 5;
+Time taken: 51.077 seconds, Fetched: 21201 row(s)
+
+select * from user_rating_partitioned_ext a inner join user_data_ext b on (a.user_id = b.user_id) where a.rating = 5;
+Time taken: 52.507 seconds, Fetched: 21201 row(s)
+
+show partitions user_rating_partitioned_ext;
+OK
+partition
+rating=1
+rating=2
+rating=3
+rating=4
+rating=5
+Time taken: 0.197 seconds, Fetched: 5 row(s)
