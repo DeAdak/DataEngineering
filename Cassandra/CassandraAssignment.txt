@@ -1,0 +1,110 @@
+1. create customer type c_no int,c_name text,mobile varint
+1. create table account(ac_no int,ac_type text,balance counter,c_info frozen<customer>,chequebknum frozen<list<int>>,primary key (ac_no,ac_type,c_info,chequebknum))
+2. insert 5 records into account 5 records
+3. transfer funds 50000 from ac/no 101 to a/c no 333 and a then transfer 10000 Rs amt from 333 to 444
+4. add new column in account table interest
+5. update all the values of interest by value to 4
+6. display all the data on the screeen
+7. add new cheque book number in the list of acno 111
+8. create index on name
+9. add new column rm_manager varchar in the table.
+1------------------
+cqlsh:first_tab> CREATE type customer(c_no int,c_name text,mobile varint);
+1------------------
+cqlsh:first_tab> drop TABLE account if exists;
+cqlsh:first_tab> CREATE table account(ac_no int,ac_type text,balance counter,c_info frozen<customer>,chequebknum frozen<list<int>>,primary key (ac_no,ac_type,c_info,chequebknum));
+2------------------
+## NSERT statements are not allowed on counter tables, use UPDATE instead
+cqlsh:first_tab> BEGIN batch
+             ... insert into account(ac_no,ac_type,balance,c_info,chequebknum) values(101,'Saving',50000.00,{c_no:501,c_name:'John',mobile:8815044242},[1000,1001,1002]);
+             ... insert into account(ac_no,ac_type,balance,c_info,chequebknum) values(111,'Current',2000.00,{c_no:503,c_name:'Albert',mobile:8815044123},[3000,3001,3002]);
+             ... apply batch;
+InvalidRequest: Error from server: code=2200 [Invalid query] message="INSERT statements are not allowed on counter tables, use UPDATE instead"
+##Cannot include a counter statement in a logged batch
+cqlsh:first_tab> BEGIN batch
+             ... update account set balance = balance + 4000 where ac_no = 333 and ac_type= 'Recurring' and c_info ={c_no:504,c_name:'Joe',mobile:8758584242}  and chequebknum= [4000,4001,4002];
+             ... update account set balance = balance + 7000 where ac_no = 444 and ac_type= 'Saving' and c_info ={c_no:505,c_name:'Jilly',mobile:8758584242}  and chequebknum= [5000,5001,5002];
+             ... update account set balance = balance + 8000 where ac_no = 555 and ac_type= 'Current' and c_info ={c_no:555,c_name:'Deba',mobile:8584857474}  and chequebknum= [9000,9001,9002];
+             ... apply batch;
+InvalidRequest: Error from server: code=2200 [Invalid query] message="Cannot include a counter statement in a logged batch"
+
+cqlsh:first_tab> update account set balance = balance + 50000 where ac_no = 101 and ac_type= 'Saving' and c_info ={c_no:501,c_name:'John',mobile:8815044242}  and chequebknum= [1000,1001,1002];
+update account set balance = balance + 2000 where ac_no = 111 and ac_type= 'Current' and c_info ={c_no:503,c_name:'Albert',mobile:8815044123}  and chequebknum= [13000,3001,3002];
+update account set balance = balance + 4000 where ac_no = 333 and ac_type= 'Recurring' and c_info ={c_no:504,c_name:'Joe',mobile:8758584242}  and chequebknum= [4000,4001,4002];
+update account set balance = balance + 7000 where ac_no = 444 and ac_type= 'Saving' and c_info ={c_no:505,c_name:'Jilly',mobile:8758584242}  and chequebknum= [5000,5001,5002];
+update account set balance = balance + 8000 where ac_no = 555 and ac_type= 'Current' and c_info ={c_no:555,c_name:'Deba',mobile:8584857474}  and chequebknum= [9000,9001,9002];
+3------------------------
+cqlsh:first_tab> select * from account ;
+ ac_no | ac_type   | c_info                                            | chequebknum         | balance
+-------+-----------+---------------------------------------------------+---------------------+---------
+   111 |   Current | {c_no: 503, c_name: 'Albert', mobile: 8815044123} | [13000, 3001, 3002] |    2000
+   444 |    Saving |  {c_no: 505, c_name: 'Jilly', mobile: 8758584242} |  [5000, 5001, 5002] |    7000
+   555 |   Current |   {c_no: 555, c_name: 'Deba', mobile: 8584857474} |  [9000, 9001, 9002] |    8000
+   333 | Recurring |    {c_no: 504, c_name: 'Joe', mobile: 8758584242} |  [4000, 4001, 4002] |    4000
+   101 |    Saving |   {c_no: 501, c_name: 'John', mobile: 8815044242} |  [1000, 1001, 1002] |   50000
+
+cqlsh:first_tab> update account set balance = balance - 50000 where ac_no = 101 and ac_type= 'Current' and c_info ={c_no:501,c_name:'John',mobile:8815044242}  and chequebknum= [1000,1001,1002];
+cqlsh:first_tab> update account set balance = balance - 50000 where ac_no = 101 and ac_type= 'Saving' and c_info ={c_no:501,c_name:'John',mobile:8815044242}  and chequebknum= [1000,1001,1002];
+cqlsh:first_tab> select * from account ;
+ ac_no | ac_type   | c_info                                            | chequebknum         | balance
+-------+-----------+---------------------------------------------------+---------------------+---------
+   111 |   Current | {c_no: 503, c_name: 'Albert', mobile: 8815044123} | [13000, 3001, 3002] |    2000
+   444 |    Saving |  {c_no: 505, c_name: 'Jilly', mobile: 8758584242} |  [5000, 5001, 5002] |    7000
+   555 |   Current |   {c_no: 555, c_name: 'Deba', mobile: 8584857474} |  [9000, 9001, 9002] |    8000
+   333 | Recurring |    {c_no: 504, c_name: 'Joe', mobile: 8758584242} |  [4000, 4001, 4002] |   54000
+   101 |    Saving |   {c_no: 501, c_name: 'John', mobile: 8815044242} |  [1000, 1001, 1002] |       0
+
+cqlsh:first_tab> update account set balance = balance - 10000 where ac_no = 333 and ac_type= 'Recurring' and c_info ={c_no:504,c_name:'Joe',mobile:8758584242}  and chequebknum= [4000,4001,4002];
+cqlsh:first_tab> update account set balance = balance + 10000 where ac_no = 444 and ac_type= 'Saving' and c_info ={c_no:505,c_name:'Jilly',mobile:8758584242}  and chequebknum= [5000,5001,5002];
+cqlsh:first_tab> select * from account ;
+ ac_no | ac_type   | c_info                                            | chequebknum         | balance
+-------+-----------+---------------------------------------------------+---------------------+---------
+   111 |   Current | {c_no: 503, c_name: 'Albert', mobile: 8815044123} | [13000, 3001, 3002] |    2000
+   444 |    Saving |  {c_no: 505, c_name: 'Jilly', mobile: 8758584242} |  [5000, 5001, 5002] |   17000
+   555 |   Current |   {c_no: 555, c_name: 'Deba', mobile: 8584857474} |  [9000, 9001, 9002] |    8000
+   333 | Recurring |    {c_no: 504, c_name: 'Joe', mobile: 8758584242} |  [4000, 4001, 4002] |   44000
+   101 |    Saving |   {c_no: 501, c_name: 'John', mobile: 8815044242} |  [1000, 1001, 1002] |       0
+4-----------------------------------
+## ONLY COL WITH TYPE COUNTER CAN BE ADDED NOW
+cqlsh:first_tab> alter TABLE account add interest counter;
+cqlsh:first_tab> select * from account ;
+ ac_no | ac_type   | c_info                                            | chequebknum         | balance | interest
+-------+-----------+---------------------------------------------------+---------------------+---------+----------
+   111 |   Current | {c_no: 503, c_name: 'Albert', mobile: 8815044123} | [13000, 3001, 3002] |    2000 |     null
+   444 |    Saving |  {c_no: 505, c_name: 'Jilly', mobile: 8758584242} |  [5000, 5001, 5002] |   17000 |     null
+   555 |   Current |   {c_no: 555, c_name: 'Deba', mobile: 8584857474} |  [9000, 9001, 9002] |    8000 |     null
+   333 | Recurring |    {c_no: 504, c_name: 'Joe', mobile: 8758584242} |  [4000, 4001, 4002] |   44000 |     null
+   101 |    Saving |   {c_no: 501, c_name: 'John', mobile: 8815044242} |  [1000, 1001, 1002] |       0 |     null
+
+5--------------------------------------
+cqlsh:first_tab> update account set interest = interest + 4 where ac_no = 101 and ac_type= 'Saving' and c_info ={c_no:501,c_name:'John',mobile:8815044242}  and chequebknum= [1000,1001,1002];
+cqlsh:first_tab> update account set interest = interest+4  where ac_no = 111 and ac_type= 'Current' and c_info ={c_no:503,c_name:'Albert',mobile:8815044123}  and chequebknum= [13000,3001,3002];
+cqlsh:first_tab> update account set interest = interest+4  where ac_no = 333 and ac_type= 'Recurring' and c_info ={c_no:504,c_name:'Joe',mobile:8758584242}  and chequebknum= [4000,4001,4002];
+cqlsh:first_tab> update account set interest = interest+4  where ac_no = 444 and ac_type= 'Saving' and c_info ={c_no:505,c_name:'Jilly',mobile:8758584242}  and chequebknum= [5000,5001,5002];
+cqlsh:first_tab> update account set interest = interest+4  where ac_no = 555 and ac_type= 'Current' and c_info ={c_no:555,c_name:'Deba',mobile:8584857474}  and chequebknum= [9000,9001,9002];
+6---------------------------------------
+cqlsh:first_tab> select * from account ;
+ ac_no | ac_type   | c_info                                            | chequebknum         | balance | interest
+-------+-----------+---------------------------------------------------+---------------------+---------+----------
+   111 |   Current | {c_no: 503, c_name: 'Albert', mobile: 8815044123} | [13000, 3001, 3002] |    2000 |        4
+   444 |    Saving |  {c_no: 505, c_name: 'Jilly', mobile: 8758584242} |  [5000, 5001, 5002] |   17000 |        4
+   555 |   Current |   {c_no: 555, c_name: 'Deba', mobile: 8584857474} |  [9000, 9001, 9002] |    8000 |        4
+   333 | Recurring |    {c_no: 504, c_name: 'Joe', mobile: 8758584242} |  [4000, 4001, 4002] |   44000 |        4
+   101 |    Saving |   {c_no: 501, c_name: 'John', mobile: 8815044242} |  [1000, 1001, 1002] |       0 |        4
+ 
+7--------------------
+#this query will work only if it is not counter table
+    update account
+    set chequebknum=['111','123','2345']
+    where ac_no = 111 and ac_type= 'Current' and c_info ={c_no:503,c_name:'Albert',mobile:8815044123}  and chequebknum= [13000,3001,3002];
+
+8------------------------
+#this query will work only if it is not counter table
+    create index idxname on ac_type
+
+9----------------------------
+#this query will work only if it is not counter table
+alter table account add r_manager varchar;
+
+
+

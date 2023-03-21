@@ -1,0 +1,4 @@
+21_SparkStreamingSocket.py 
+	open terminal --> run nc -lk 9999
+	run the application in pycharm
+	paste somthing in terminal and you will see it in pycharm 

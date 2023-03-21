@@ -1,0 +1,354 @@
+Installation: https://www.youtube.com/watch?v=IYeWNjZbOuw&t=409s&ab_channel=r2schools
+if you got this Error: ModuleNotFoundError: No module named 'cqlshlib'
+try this Solution: pip install cqlsh
+---------------------------------------------------------
+$ cqlsh
+## Create Database/Keyspace
+cqlsh> create keyspace first_tab with replication = {'class': 'SimpleStrategy','replication_factor':'1'}
+## Database/Keyspace info
+cqlsh> describe first_tab ;
+cqlsh> use first_tab;
+## Create Table
+cqlsh:first_tab> CREATE table account(acc_no int PRIMARY KEY ,name text,amount varint);
+cqlsh:first_tab> describe account;
+## View all tables
+cqlsh:first_tab> DESCRIBE tables;
+
+## Unable to insert multiple values need to use BATCH.
+cqlsh:first_tab> INSERT INTO account (acc_no,name,amount) values(101,deba,46000),(102,saha,36600);
+
+cqlsh:first_tab> INSERT INTO account (acc_no,name,amount) values (101,'deba',46000);
+cqlsh:first_tab> SELECT * from account;
+ acc_no | amount | name
+--------+--------+------
+    101 |   46000 | deba
+	
+cqlsh:first_tab> INSERT INTO account (acc_no,name,amount) values (101,'deba',4600);
+cqlsh:first_tab> SELECT * from account;
+ acc_no | amount | name
+--------+--------+------
+    101 |   4600 | deba
+
+cqlsh:first_tab> INSERT INTO account (acc_no,name,amount) values (102,'saha',36600);
+cqlsh:first_tab> SELECT * from account;
+ acc_no | amount | name
+--------+--------+------
+    102 |  36600 | saha
+    101 |  46700 |  deb
+
+## Drop column
+cqlsh:first_tab> ALTER TABLE account DROP amount ;
+cqlsh:first_tab> SELECT * from account;
+ acc_no | name
+--------+------
+    102 | saha
+    101 |  deb
+
+cqlsh:first_tab> ALTER TABLE account add amount double;
+InvalidRequest: Error from server: code=2200 [Invalid query] message="Cannot re-add previously dropped column 'amount' of type double, incompatible with previous type varint"
+
+cqlsh:first_tab> ALTER TABLE account add ammount double;
+cqlsh:first_tab> INSERT INTO account (ammout) values(47600.97);
+InvalidRequest: Error from server: code=2200 [Invalid query] message="Undefined column name ammout in table first_tab.account"
+
+cqlsh:first_tab> INSERT INTO account (acc_no,ammount) values(101,47600.97);
+cqlsh:first_tab> SELECT * from account;
+
+ acc_no | ammount  | name
+--------+----------+------
+    102 |     null | saha
+    101 | 47600.97 |  deb
+
+cqlsh:first_tab> INSERT INTO account (acc_no,ammount) values(102,7600.97);
+cqlsh:first_tab> SELECT * from account;
+
+ acc_no | ammount  | name
+--------+----------+------
+    102 |  7600.97 | saha
+    101 | 47600.97 |  deb
+
+cqlsh:first_tab> CREATE TABLE blog (blog_id uuid,name text,upload timestamp ,primary key(blog_id ,upload));
+cqlsh:first_tab> INSERT INTO blog(blog_id ,name, upload ) values(uuid(),'first_vlog',dateof(now()));
+cqlsh:first_tab> SELECT * from blog;
+
+ blog_id                              | upload                          | name
+--------------------------------------+---------------------------------+------------
+ 52fcd151-98e6-4603-8bae-8c8547f8092a | 2023-03-20 18:51:32.900000+0000 | first_vlog
+
+cqlsh:first_tab> INSERT INTO blog(blog_id , upload ) values(uuid(),dateof(now()));
+cqlsh:first_tab> SELECT * from blog;
+
+ blog_id                              | upload                          | name
+--------------------------------------+---------------------------------+------------
+ 2f2ac219-de69-423f-836e-78459af3384d | 2023-03-20 18:56:22.031000+0000 |       null
+ 52fcd151-98e6-4603-8bae-8c8547f8092a | 2023-03-20 18:51:32.900000+0000 | first_vlog
+
+(2 rows)
+cqlsh:first_tab> UPDATE blog set name = 'second_vlog' where blog_id = 2f2ac219-de69-423f-836e-78459af3384d; 
+InvalidRequest: Error from server: code=2200 [Invalid query] message="Some clustering keys are missing: upload"
+
+## all PKs should be mentioned
+cqlsh:first_tab> UPDATE blog set name = 'second_vlog' where blog_id = 2f2ac219-de69-423f-836e-78459af3384d and upload = '2023-03-20 18:56:22.031000+0000'; 
+cqlsh:first_tab> select * from blog;
+ blog_id                              | upload                          | name
+--------------------------------------+---------------------------------+-------------
+ 2f2ac219-de69-423f-836e-78459af3384d | 2023-03-20 18:56:22.031000+0000 | second_vlog
+ 52fcd151-98e6-4603-8bae-8c8547f8092a | 2023-03-20 18:51:32.900000+0000 |  first_vlog
+
+##Use of Collections
+cqlsh:first_tab> CREATE TABLE student (roll_no int primary key,name text, hobbies set<text>,data tuple<int,float,text>);
+cqlsh:first_tab> INSERT INTO student (roll_no , name , hobbies ) VALUES ( 10,'deba',{'gaming','reading'});
+cqlsh:first_tab> SELECT * FROM student ;
+
+ roll_no | data | hobbies               | name
+---------+------+-----------------------+------
+      10 | null | {'gaming', 'reading'} | deba
+
+cqlsh:first_tab> INSERT INTO student (roll_no , name , hobbies,data ) VALUES ( 101,'deba101',{'partying','long drive'},(101,202.202,'life'));
+cqlsh:first_tab> SELECT * FROM student ;
+
+ roll_no | data                   | hobbies                    | name
+---------+------------------------+----------------------------+---------
+      10 |                   null |      {'gaming', 'reading'} |    deba
+     101 | (101, 202.202, 'life') | {'long drive', 'partying'} | deba101
+
+cqlsh:first_tab> UPDATE student set data = (10,20.20,'job') where roll_no = 10;
+cqlsh:first_tab> SELECT * FROM student ;
+
+ roll_no | data                   | hobbies                    | name
+---------+------------------------+----------------------------+---------
+      10 |      (10, 20.2, 'job') |      {'gaming', 'reading'} |    deba
+     101 | (101, 202.202, 'life') | {'long drive', 'partying'} | deba101
+## Add to set
+cqlsh:first_tab> UPDATE student set hobbies = hobbies+{'coding'} where roll_no = 10;
+cqlsh:first_tab> SELECT * FROM student ;
+
+ roll_no | data                   | hobbies                         | name
+---------+------------------------+---------------------------------+---------
+      10 |      (10, 20.2, 'job') | {'coding', 'gaming', 'reading'} |    deba
+     101 | (101, 202.202, 'life') |      {'long drive', 'partying'} | deba101
+## Remove from to set
+cqlsh:first_tab> UPDATE student set hobbies = hobbies-{'gaming'} where roll_no = 10;
+cqlsh:first_tab> SELECT * FROM student ;
+ roll_no | data                   | hobbies                    | name
+---------+------------------------+----------------------------+---------
+      10 |      (10, 20.2, 'job') |      {'coding', 'reading'} |    deba
+     101 | (101, 202.202, 'life') | {'long drive', 'partying'} | deba101
+
+cqlsh:first_tab> DELETE hobbies from student where roll_no = 10;
+cqlsh:first_tab> SELECT * FROM student ;
+ roll_no | data                   | hobbies                    | name
+---------+------------------------+----------------------------+---------
+      10 |      (10, 20.2, 'job') |                       null |    deba
+     101 | (101, 202.202, 'life') | {'long drive', 'partying'} | deba101
+
+cqlsh:first_tab> DELETE from student where roll_no = 10;
+cqlsh:first_tab> SELECT * FROM student ;
+
+ roll_no | data                   | hobbies                    | name
+---------+------------------------+----------------------------+---------
+     101 | (101, 202.202, 'life') | {'long drive', 'partying'} | deba101
+
+cqlsh:first_tab> UPDATE student set hobbies = hobbies+{'gaming'} where name = deba101;
+SyntaxException: line 1:68 no viable alternative at input ';' (...{'gaming'} where name = [deba101];)
+
+## All values should be provided for tuple
+cqlsh:first_tab> INSERT INTO student (roll_no , name , hobbies,data ) VALUES ( 102,'deba101',{'partying','long drive'},(101,'life'));
+InvalidRequest: Error from server: code=2200 [Invalid query] message="Invalid tuple literal for data: component 1 is not of type float"
+## List
+cqlsh:first_tab> CREATE TABLE employee (emp_id int primary key,name text,company list<text>);
+cqlsh:first_tab> INSERT INTO employee (emp_id , name , company ) VALUES ( 10,'deba',['TCS','CG']);
+cqlsh:first_tab> SELECT * FROM employee ;
+
+ emp_id | company       | name
+--------+---------------+------
+     10 | ['TCS', 'CG'] | deba
+
+cqlsh:first_tab> UPDATE employee SET company = COMPANY+['GOOGLE'] where emp_id = 10;
+cqlsh:first_tab> SELECT * FROM employee ;
+
+ emp_id | company                 | name
+--------+-------------------------+------
+     10 | ['TCS', 'CG', 'GOOGLE'] | deba
+
+cqlsh:first_tab> UPDATE employee SET company = ['APPLE']+COMPANY where emp_id = 10;
+cqlsh:first_tab> SELECT * FROM employee ;
+
+ emp_id | company                          | name
+--------+----------------------------------+------
+     10 | ['APPLE', 'TCS', 'CG', 'GOOGLE'] | deba
+
+cqlsh:first_tab> UPDATE employee SET company[2] = 'TESLA' where emp_id = 10;
+cqlsh:first_tab> SELECT * FROM employee ;
+
+ emp_id | company                             | name
+--------+-------------------------------------+------
+     10 | ['APPLE', 'TCS', 'TESLA', 'GOOGLE'] | deba
+
+cqlsh:first_tab> DELETE company[2] FROM employee where emp_id = 10;
+cqlsh:first_tab> SELECT * FROM employee ;
+
+ emp_id | company                    | name
+--------+----------------------------+------
+     10 | ['APPLE', 'TCS', 'GOOGLE'] | deba
+
+cqlsh:first_tab> UPDATE employee SET company = company- ['google'] where emp_id = 10;
+cqlsh:first_tab> SELECT * FROM employee ;
+
+ emp_id | company                    | name
+--------+----------------------------+------
+     10 | ['APPLE', 'TCS', 'GOOGLE'] | deba
+
+cqlsh:first_tab> UPDATE employee SET company = company- ['GOOGLE'] where emp_id = 10;
+cqlsh:first_tab> SELECT * FROM employee ;
+
+ emp_id | company          | name
+--------+------------------+------
+     10 | ['APPLE', 'TCS'] | deba
+## Dictionary
+cqlsh:first_tab> CREATE TABLE EXAM_MARKS (roll int primary key,name text,subject_marks map<text,int>);
+cqlsh:first_tab> INSERT INTO exam_marks (roll, name , subject_marks ) VALUES ( 10,'deba',{'math':89});
+cqlsh:first_tab> SELECT * from exam_marks ;
+ roll | name | subject_marks
+------+------+---------------
+   10 | deba |  {'math': 89}
+
+cqlsh:first_tab> UPDATE exam_marks set subject_marks = {'bengali':80} where roll = 10;
+cqlsh:first_tab> SELECT * from exam_marks ;
+ roll | name | subject_marks
+------+------+-----------------
+   10 | deba | {'bengali': 80}
+   
+cqlsh:first_tab> UPDATE exam_marks set subject_marks = subject_marks + {'bengali':80} where roll = 10;
+cqlsh:first_tab> SELECT * from exam_marks ;
+ roll | name | subject_marks
+------+------+-----------------
+   10 | deba | {'bengali': 80}
+
+cqlsh:first_tab> UPDATE exam_marks set subject_marks = subject_marks + {'math':70} where roll = 10;
+cqlsh:first_tab> SELECT * from exam_marks ;
+ roll | name | subject_marks
+------+------+-----------------------------
+   10 | deba | {'bengali': 80, 'math': 70}
+
+cqlsh:first_tab> UPDATE exam_marks set subject_marks['bengali']=82  where roll = 10;
+cqlsh:first_tab> SELECT * from exam_marks ;
+ roll | name | subject_marks
+------+------+-----------------------------
+   10 | deba | {'bengali': 82, 'math': 70}
+
+cqlsh:first_tab> DELETE subject_marks['math'] from exam_marks where roll = 10;
+cqlsh:first_tab> SELECT * from exam_marks ;
+ roll | name | subject_marks
+------+------+-----------------
+   10 | deba | {'bengali': 82}
+
+cqlsh:first_tab> INSERT INTO exam_marks (roll , name , subject_marks ) VALUES ( 12,'saha',{'beng':99,'math':89,'phy':87});
+cqlsh:first_tab> SELECT * from exam_marks ;
+ roll | name | subject_marks
+------+------+-------------------------------------
+   10 | deba |                     {'bengali': 82}
+   12 | saha | {'beng': 99, 'math': 89, 'phy': 87}
+
+cqlsh:first_tab> UPDATE exam_marks set subject_marks = subject_marks - {'beng','math'} where roll =10;
+cqlsh:first_tab> SELECT * from exam_marks ;
+ roll | name | subject_marks
+------+------+-------------------------------------
+   10 | deba |                     {'bengali': 82}
+   12 | saha | {'beng': 99, 'math': 89, 'phy': 87}
+
+cqlsh:first_tab> UPDATE exam_marks set subject_marks = subject_marks - {'beng','math'} where roll =12;
+cqlsh:first_tab> SELECT * from exam_marks ;
+ roll | name | subject_marks
+------+------+-----------------
+   10 | deba | {'bengali': 82}
+   12 | saha |     {'phy': 87}
+
+## nested tuple
+cqlsh:first_tab> CREATE TABLE friends(id int primary key,name text,hobbies tuple<text,tuple<text,text>>);
+cqlsh:first_tab> INSERT INTO friends(id, name , hobbies ) values(10,'ravi',('cricket',('bat','ball')));
+cqlsh:first_tab> SELECT * from friends ;
+ id | hobbies                      | name
+----+------------------------------+------
+ 10 | ('cricket', ('bat', 'ball')) | ravi
+
+## CREATE TYPE
+cqlsh:first_tab> CREATE type address(city text,pin varint, state text);
+
+cqlsh:first_tab> CREATE table relative (id int primary key,name text,r_add address);
+cqlsh:first_tab> INSERT INTO relative(id, name ,r_add) VALUES ( 11,'kaka',{city:'kolkata',pin:712409,state:'WB'});
+cqlsh:first_tab> SELECT * FROM relative ;
+ id | name | r_add
+----+------+---------------------------------------------
+ 11 | kaka | {city: 'kolkata', pin: 712409, state: 'WB'}
+
+cqlsh:first_tab> ALTER TYPE  address ADD VILLAGE TEXT;
+cqlsh:first_tab> SELECT * FROM relative ;
+ id | name | r_add
+----+------+------------------------------------------------------------
+ 11 | kaka | {city: 'kolkata', pin: 712409, state: 'WB', village: null}
+
+cqlsh:first_tab> ALTER TYPE  address RENAME VILLAGE to vill;
+cqlsh:first_tab> SELECT * FROM relative ;
+ id | name | r_add
+----+------+---------------------------------------------------------
+ 11 | kaka | {city: 'kolkata', pin: 712409, state: 'WB', vill: null}
+
+## INDEXING
+cqlsh:first_tab> CREATE index ind_name on relative(name);
+
+cqlsh:first_tab> SELECT * from relative ;
+ id | name | r_add
+----+------+---------------------------------------------------------
+ 11 | kaka | {city: 'kolkata', pin: 712409, state: 'WB', vill: null}
+
+cqlsh:first_tab> BEGIN batch
+             ... INSERT INTO relative(id, name ,r_add) VALUES ( 15,'dada15',{city:'singur',pin:712444,state:'uyt'});
+             ... INSERT INTO relative(id, name ,r_add) VALUES ( 16,'dad56',{city:'srirampur',pin:712222,state:'BIHAR'});
+             ... delete from relative where id = 16;
+             ... apply batch;
+			 
+cqlsh:first_tab> SELECT * from relative ;
+ id | name   | r_add
+----+--------+----------------------------------------------------------
+ 11 |   kaka |  {city: 'kolkata', pin: 712409, state: 'WB', vill: null}
+ 15 | dada15 |  {city: 'singur', pin: 712444, state: 'uyt', vill: null}
+ 14 |   dada | {city: 'hooghly', pin: 712499, state: 'uyt', vill: null}
+ 12 |   dada | {city: 'hooghly', pin: 712410, state: 'TEL', vill: null}
+ 
+ cqlsh:first_tab> BEGIN batch
+             ... INSERT INTO relative(id, name ,r_add) VALUES ( 16,'dad56',{city:'srirampur',pin:712222,state:'BIHAR'}) if not exists;
+             ... apply batch;
+
+ [applied]
+-----------
+      True
+
+cqlsh:first_tab> SELECT * from relative ;
+
+ id | name   | r_add
+----+--------+--------------------------------------------------------------
+ 16 |  dad56 | {city: 'srirampur', pin: 712222, state: 'BIHAR', vill: null}
+ 11 |   kaka |      {city: 'kolkata', pin: 712409, state: 'WB', vill: null}
+ 15 | dada15 |      {city: 'singur', pin: 712444, state: 'uyt', vill: null}
+ 14 |   dada |     {city: 'hooghly', pin: 712499, state: 'uyt', vill: null}
+ 12 |   dada |     {city: 'hooghly', pin: 712410, state: 'TEL', vill: null}
+
+## IF ROW EXISTS, RETURN THE EXISTING ROW
+cqlsh:first_tab> begin BATCH 
+             ... INSERT INTO relative(id, name ,r_add) VALUES ( 16,'dad',{city:'srirampur',pin:712222,state:'BIHAR'}) if not exists;
+             ... apply batch;
+
+ [applied] | id | name  | r_add
+-----------+----+-------+--------------------------------------------------------------
+     False | 16 | dad56 | {city: 'srirampur', pin: 712222, state: 'BIHAR', vill: null}
+
+cqlsh:first_tab> 
+
+
+
+
+
+
+
+
