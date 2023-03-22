@@ -1,4 +1,26 @@
 21_SparkStreamingSocket.py 
-	open terminal --> run nc -lk 9999
+	open terminal --> run 'nc -lk 9999'
 	run the application in pycharm
-	paste somthing in terminal and you will see it in pycharm 
+	paste somthing in terminal and you will see it in pycharm as it is
+
+22_SparkStreamingSocket_withProcessing.py
+	open terminal --> run 'nc -lk 9999'
+	run the application in pycharm
+	paste somthing in terminal and you will see it in pycharm
+	this time we will perform some operation on the streaming data,
+	we will split the lines with " ",group by the words and print the word and its count.
+
+23_SparkStreamingSocket_withSchemaProcessing
+	open terminal --> run 'nc -lk 9999'
+	run the application in pycharm
+	paste Train Dataset in terminal and you will see it in pycharm with schema
+
+24_StreamProcessingWithDataSpooling
+	run the application in pycharm
+	paste Train Dataset in a particular location and you will see it in pycharm with schema
+	
+25_SparkStreaming_withKafka 
+	run the application in pycharm
+	paste 'key:value' in terminal  location and you will see it in pycharm with schema
+	
+26_StreamProcessingWithData --> Ignore

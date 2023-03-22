@@ -25,28 +25,3 @@ toDF, createDataFrame, drop, select, filter, where, union groupBy avg min count 
 10_SparkDataFormats.py : SparkContext, SparkConf, SQLContext, SparkSession, write.option().csv( __.csv)
 df.write.mode('overwrite').parquet( __.parquet) or .orc(.orc)
 
-Assignment:
-Load the provided election dataset (Election_Dataset_v_3.0.csv) into Spark and gather the following results:
-
-    1. Load the data into SparkSQL. Schema as follows
-        a. State
-        b. Year
-        c. ID
-        d. District
-        e. Category
-        f. Candidate_Name
-        g. Gender
-        h. Political_Party_Name
-        i. Political_Party_Code
-        j. Count_1
-        k. Voters
-    2. Load the data using both approaches
-        a. By directly passing the column names as array
-        b. By creating a struct schema
-    3. Get the total count of records
-    4. Find the earliest year for which the election data was available
-    5. Find the latest year for which the election data was available
-    6. Find the count of Male / Female candidate per state
-    7. Find how many distinct parties were competing each year
-    8. Find the total voters for each state per year
-
