@@ -1,0 +1,39 @@
+Spark Kafka Cassandra Streaming Code
+
+Start the Spark Shell with below command 
+
+bin/spark-shell --packages "com.datastax.spark:spark-cassandra-connector-assembly_2.12:3.2.0","org.apache.spark:spark-streaming-kafka_2.11:1.6.2"
+
+Run this code in the spark shell
+
+
+//This code is for spark shell 
+spark.stop
+import org.apache.spark.SparkConf
+import org.apache.spark.SparkContext._
+import org.apache.spark.streaming._
+import org.apache.spark.streaming.StreamingContext._
+import org.apache.spark.streaming.kafka._
+
+
+import com.datastax.spark.connector.SomeColumns
+import com.datastax.spark.connector.cql.CassandraConnector
+import com.datastax.spark.connector.streaming._
+
+
+
+val sparkConf = new SparkConf().setAppName("KafkaSparkStreaming").set("spark.cassandra.connection.host", "localhost").set("spark.cassandra.connection.port", "9042");
+
+val ssc = new StreamingContext(sparkConf, Seconds(20))
+
+val topicpMap = "train_topic".split(",").map((_, 1.toInt)).toMap
+
+val lines = KafkaUtils.createStream(ssc, "localhost:2181", "sparkgroup", topicpMap).map(_._2)
+
+lines.print();
+
+
+
+lines.map(line => { val arr = line.split(","); (arr(0),arr(1),arr(2),arr(3),arr(4),arr(5)) }).saveToCassandra("first_tab", "cust_data", SomeColumns("id","fname", "lname","prod_id","product","cnt"))
+ssc.start();
+ssc.awaitTermination();

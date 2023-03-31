@@ -1,0 +1,21 @@
+Get input from user using Kafka, store it to Cassandra DB, do a sentiment analysis.
+
+https://docs.datastax.com/en/developer/python-driver/3.25/getting_started/
+
+cd $KAFKA_HOME
+./bin/zookeeper-server-stara.sh config/zookeeper.properties > logs/zk.log 2>&1 &
+./bin/kafka-server-start.sh config/server.properties > logs/kafka.log 2>&1 &
+./bin/kafka-topics.sh --create --partitions 1 --replication-factor 1 --topic train_topic --bootstrap-server localhost:9092
+
+# Check if the topic is properly created
+bin/kafka-topics.sh --describe --topic train_topic --bootstrap-server localhost:9092
+OR
+bin/kafka-topics.sh --list --bootstrap-server localhost:9092
+
+#Create database and table
+CREATE KEYSPACE first_tab WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'} ;
+CREATE TABLE cust_data (id text,fname text,lname text,prod_id text,product text,cnt counter,PRIMARY KEY (id, fname, lname, prod_id, product));
+
+#Producer Consumer
+./bin/kafka-console-producer.sh --topic train_topic --bootstrap-server localhost:9092
+./bin/kafka-console-consumer.sh --topic train_topic --bootstrap-server localhost:9092

@@ -1,0 +1,11 @@
+./bin/pyspark --master local[*] --packages com.datastax.spark:spark-cassandra-connector_2.11:2.3.2 --conf spark.cassandra.connection.host=host.name --conf spark.cassandra.auth.username=cassandraname --conf spark.cassandra.auth.password=cassandrapwd
+
+>>> df = spark.read.format("org.apache.spark.sql.cassandra")\
+   .options(table="tablename", keyspace="keyspacename").load()
+
+>>> df.show()
+
+
+com.datastax.spark:spark-cassandra-connector-assembly_2.12:3.2.0
+./bin/spark-shell --packages com.datastax.spark:spark-cassandra-connector-assembly_2.12:3.2.0  --conf spark.cassandra.connection.host=localhost --verbose
+

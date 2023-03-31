@@ -1,0 +1,1 @@
+CREATE TABLE cust_data (id text,fname text,lname text,prod_id text,product text,cnt counter,PRIMARY KEY (id, fname, lname, prod_id, product));

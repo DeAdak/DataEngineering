@@ -1,0 +1,69 @@
+Approach 2 (pyspark-cassandra)
+
+Use below command to start pyspark shell by using pyspark-cassandra
+
+pyspark --packages anguenot/pyspark-cassandra:4.1.0
+Read data from cassandra table "emp" and keyspace "test" as
+
+spark.read.format("org.apache.spark.sql.cassandra").options(table="realtive", keyspace="first_tab").load().show()
+------------------------
+./bin/spark-shell --packages com.datastax.spark:spark-cassandra-connector-assembly_2.12:3.2.0  --conf spark.cassandra.connection.host=localhost --verbose
+import org.apache.spark.sql.cassandra._
+import com.datastax.spark.connector._
+import com.datastax.spark.connector.cql.CassandraConnector
+
+val readBooksDF = spark.read.format("org.apache.spark.sql.cassandra").options(Map( "table" -> "relative", "keyspace" -> "first_tab")).load
+
+readBooksDF.explain
+readBooksDF.show
+------------------------------
+val df = spark.read.cassandraFormat("relative", "first_tab").load
+df.explain
+val dfWithPushdown = df.filter(df("id") > 11)
+dfWithPushdown.explain
+
+readBooksDF.printSchema
+readBooksDF.explain
+readBooksDF.show
+----------------------
+spark.read.format("org.apache.spark.sql.cassandra").options(Map( "table" -> "relative", "keyspace" -> "first_tab")).load.createOrReplaceTempView("relative_temp")
+spark.sql("select * from relative_temp").show
+-----------------------
+create KEYSPACE books_ks (book_id int primary key, book_author text, book_name text, book_pub_year int);
+
+
+import org.apache.spark.sql.cassandra._
+//Spark connector
+import com.datastax.spark.connector._
+import com.datastax.spark.connector.cql.CassandraConnector
+
+//if using Spark 2.x, CosmosDB library for multiple retry
+//import com.microsoft.azure.cosmosdb.cassandra
+
+// Generate a dataframe containing five records
+val booksDF = Seq(
+   ("b00001", "Arthur Conan Doyle", "A study in scarlet", 1887),
+   ("b00023", "Arthur Conan Doyle", "A sign of four", 1890),
+   ("b01001", "Arthur Conan Doyle", "The adventures of Sherlock Holmes", 1892),
+   ("b00501", "Arthur Conan Doyle", "The memoirs of Sherlock Holmes", 1893),
+   ("b00300", "Arthur Conan Doyle", "The hounds of Baskerville", 1901)
+).toDF("book_id", "book_author", "book_name", "book_pub_year")
+
+//Review schema
+booksDF.printSchema
+
+//Print
+booksDF.show
+-----------------------
+//Persist
+booksDF.write.mode("append").format("org.apache.spark.sql.cassandra").options(Map( "table" -> "books", "keyspace" -> "books_ks")).save()
+
+//Persist
+booksDF.write.mode("append").format("org.apache.spark.sql.cassandra").options(Map( "table" -> "books", "keyspace" -> "books_ks", "output.consistency.level" -> "ALL")).save()
+
+readBooksDF.explain
+readBooksDF.show
+
+spark.read.cassandraFormat("books", "books_ks", "").load().select("book_price").agg(avg("book_price")).show
+
+bin/spark-shell --packages "com.datastax.spark:spark-cassandra-connector_2.12:3.2.0","org.apache.spark:spark-streaming-kafka-0-8_2.11:2.0.0"
