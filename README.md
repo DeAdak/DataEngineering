@@ -31,4 +31,4 @@ Realtime data streaming using Kafka
 
 ## Cassandra: Basics and Assignment
 
-##kafkaCassandraPY: Get input from user using Kafka, store it to Cassandra DB, do a sentiment analysis.
+## KafkaCassandraPY: Get input from user using Kafka, store it to Cassandra DB, do a sentiment analysis.
