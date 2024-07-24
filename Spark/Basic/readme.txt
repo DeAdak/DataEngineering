@@ -1,5 +1,7 @@
 01_PySpark_Initialise.py : spark initialization using SparkContext, SparkConf
 
+001_PySpark_Initialise_withSession.py : spark initialization using spark-submit, --master local, spark://local-host:port, yarn
+
 02_PySpark_Initialise_with_findspark.py : spark initialization using findspark, SparkContext, SparkConf
 findspark : if you need to use different versions of spark for the same application. Go to configure (just below the application.py, drop down menu)
 Environment Variable--> Name:SPARK_HOME, Value: spark folder
