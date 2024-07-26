@@ -1,0 +1,43 @@
+Kafka Installation
+Download the tarball from the download location mentioned below.
+Link : https://dlcdn.apache.org/kafka/3.7.1/
+File Name: kafka_x.x-x.x.x.tgz
+
+	Follow the steps below for installation.
+1. Untar the downloaded jar
+a. $ tar -xvzf <YOUR_DOWNLOADED_TAR_BALL_LOCATION>
+tar -xvzf kafka_x.x-x.x.x.tgz
+
+2. Export KAFKA_HOME=<YOUR_KAFKA_EXTRACTED_LOCATION>
+vi ~/.bashrc
+KAFKA_HOME=/home/..../kafka_x.x-x.x.x
+:wq
+bash
+echo $KAFKA_HOME
+
+3. Ensure HBase is down ( esp Quorumpeer )
+
+4. Start your zookeeper. Run the following
+	a. cd $KAFKA_HOME
+	b. mkdir logs
+	c. bin/zookeeper-server-start.sh config/zookeeper.properties > logs/zk.log 2>&1 &
+	d. bin/kafka-server-start.sh config/server.properties > logs/kafka.log 2>&1 &
+	
+5. Test your installation
+	a. From 1st Terminal and check the topic creation
+		cd $KAFKA_HOME
+		i. bin/kafka-topics.sh --create --partitions 1 --replication-factor 1 --topic
+		quickstart-events --bootstrap-server localhost:9092
+		ii. bin/kafka-topics.sh --describe --topic quickstart-events
+		--bootstrap-server localhost:9092
+		iii. bin/kafka-console-producer.sh --topic quickstart-events
+		--bootstrap-server localhost:9092
+		1. Enter values in the terminal
+	b. From 2nd Terminal, start a consumer and see if things are being consumed
+		cd $KAFKA_HOME
+		i. bin/kafka-console-consumer.sh --topic quickstart-events
+		--from-beginning --bootstrap-server localhost:9092
+6. To stop the servers run the following:
+	cd $KAFKA_HOME
+	a. bin/kafka-server-stop.sh
+	b. bin/zookeeper-server-stop.sh
