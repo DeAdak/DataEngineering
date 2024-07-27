@@ -26,17 +26,13 @@ echo $KAFKA_HOME
 5. Test your installation
 	a. From 1st Terminal and check the topic creation
 		cd $KAFKA_HOME
-		i. bin/kafka-topics.sh --create --partitions 1 --replication-factor 1 --topic
-		quickstart-events --bootstrap-server localhost:9092
-		ii. bin/kafka-topics.sh --describe --topic quickstart-events
-		--bootstrap-server localhost:9092
-		iii. bin/kafka-console-producer.sh --topic quickstart-events
-		--bootstrap-server localhost:9092
+		i. bin/kafka-topics.sh --create --partitions 1 --replication-factor 1 --topic quickstart-events --bootstrap-server localhost:9092
+		ii. bin/kafka-topics.sh --describe --topic quickstart-events --bootstrap-server localhost:9092
+		iii. bin/kafka-console-producer.sh --topic quickstart-events --bootstrap-server localhost:9092
 		1. Enter values in the terminal
 	b. From 2nd Terminal, start a consumer and see if things are being consumed
 		cd $KAFKA_HOME
-		i. bin/kafka-console-consumer.sh --topic quickstart-events
-		--from-beginning --bootstrap-server localhost:9092
+		i. bin/kafka-console-consumer.sh --topic quickstart-events --from-beginning --bootstrap-server localhost:9092
 6. To stop the servers run the following:
 	cd $KAFKA_HOME
 	a. bin/kafka-server-stop.sh
