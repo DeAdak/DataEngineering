@@ -1,0 +1,243 @@
+HospitalA
+---------
+TransactionID  EncounterID  PatientID	  ProviderID  DeptID   VisitDate   ServiceDate  PaidDate	VisitType  Amount  AmountType  PaidAmount  
+TRANS000001	   ENC001204	HOSP1-002372  PROV0456	  DEPT002  02-08-2024  25-05-2024	15-06-2024  Routine	   988.36  Medicare	   315.70	   
+TRANS000002	   ENC000029	HOSP1-002329  PROV0321 	  DEPT013  02-05-2024  14-09-2024	19-09-2024	Emergency  291.26  Medicare	   667.98	   
+
+ClaimID	       PayorID	    ProcedureCode ICDCode	  LineOfBusiness  MedicaidID  MedicareID  InsertDate  ModifiedDate
+CLAIM533365	   PAYOR4707    94521		  I19.4	      Commercial	  MEDI24173	  MCARE19466  16-01-2021  27-12-2021
+CLAIM629724	   PAYOR1481    51588		  I54.0		  Self-Pay		  MEDI63110	  MCARE97946  06-02-2021  26-01-2022
+	
+
+HospitalB
+---------
+TransactionID  EncounterID  PatientID	  ProviderID  DeptID   VisitDate   ServiceDate  PaidDate	VisitType	Amount	AmountType	PaidAmount	
+TRANS000001	   ENC000512	HOSP1-002609  PROV0434	  DEPT016  31-08-2024  03-04-2024	06-02-2024	Follow-up	616.86	Self-pay	234.57		
+TRANS000002	   ENC009236	HOSP1-004031  PROV0382	  DEPT017  10-04-2024  25-08-2024	01-02-2024	Follow-up	680.41	Insurance	445.86		
+
+ClaimID		   PayorID	    ProcedureCode ICDCode	  LineOfBusiness  MedicaidID  MedicareID  InsertDate  ModifiedDate
+CLAIM879364	   PAYOR9066    93411		  I95.4		  Commercial	  MEDI13625	  MCARE38344  01-10-2021  15-01-2024
+CLAIM835197	   PAYOR1013    86401		  I39.5		  Self-Pay		  MEDI20311	  MCARE53178  20-03-2020  29-01-2023
+
+
+--1. Create a quality_checks temp table
+CREATE OR REPLACE TABLE `avd-databricks-demo.silver_dataset.quality_checks` AS
+SELECT DISTINCT
+	CONCAT(TransactionID,'-',datasource) AS Transaction_Key,
+	TransactionID as SRC_TransactionID,
+	EncounterID,  
+	PatientID,	  
+	ProviderID,  
+	DeptID,   
+	VisitDate,   
+	ServiceDate,  
+	PaidDate,	
+	VisitType,  
+	Amount,  
+	AmountType,  
+	PaidAmount,  
+	ClaimID,	    
+	PayorID,	   
+	ProcedureCode
+	ICDCode,	
+	LineOfBusiness,	
+	MedicaidID,	
+	MedicareID,	
+	InsertDate as SRC_InsertDate,	
+	ModifiedDate as SRC_ModifiedDate,  
+	datasource,
+	CASE WHEN EncounterID IS NULL OR PatientID IS NULL OR VisitDate IS NULL OR TransactionID IS NULL THEN TRUE ELSE FALSE END AS is_qurantined
+FROM(
+SELECT DISTINCT *, 'HospitalA' AS datasource FROM `avd-databricks-demo.bronze_dataset.transactions_ha`
+UNION ALL
+SELECT DISTINCT *, 'HospitalB' AS datasource FROM `avd-databricks-demo.bronze_dataset.transactions_hb`
+)
+
+quality_checks
+---------------
+Transaction_Key			SRC_TransactionID  EncounterID  PatientID	  ProviderID  DeptID   VisitDate   ServiceDate  PaidDate	VisitType  Amount  AmountType  PaidAmount  
+TRANS000001-HospitalA	TRANS000001	   	   ENC001204	HOSP1-002372  PROV0456	  DEPT002  02-08-2024  25-05-2024	15-06-2024  Routine	   988.36  Medicare	   315.70	   
+TRANS000002-HospitalA	TRANS000002	   	   ENC000029	HOSP1-002329  PROV0321 	  DEPT013  02-05-2024  14-09-2024	19-09-2024	Emergency  291.26  Medicare	   667.98	   
+TRANS000001-HospitalB	TRANS000001	   	   ENC000512	HOSP1-002609  PROV0434	  DEPT016  31-08-2024  03-04-2024	06-02-2024	Follow-up  616.86  Self-pay	   234.57
+TRANS000002-HospitalB	TRANS000002	   	   ENC009236	HOSP1-004031  PROV0382	  DEPT017  10-04-2024  25-08-2024	01-02-2024	Follow-up  680.41  Insurance   445.86
+
+ClaimID	       PayorID	    ProcedureCode ICDCode	  LineOfBusiness  MedicaidID  MedicareID  SRC_InsertDate  SRC_ModifiedDate  datasource  is_qurantined
+CLAIM533365	   PAYOR4707    94521		  I19.4	      Commercial	  MEDI24173	  MCARE19466  16-01-2021  	  27-12-2021		HospitalA   FALSE
+CLAIM629724	   PAYOR1481    51588		  I54.0		  Self-Pay		  MEDI63110	  MCARE97946  06-02-2021      26-01-2022 		HospitalA   FALSE
+CLAIM879364	   PAYOR9066    93411		  I95.4		  Commercial	  MEDI13625	  MCARE38344  01-10-2021      15-01-2024		HospitalB   FALSE
+CLAIM835197	   PAYOR1013    86401		  I39.5		  Self-Pay		  MEDI20311	  MCARE53178  20-03-2020      29-01-2023		HospitalB   FALSE
+
+transactions
+------------
+Transaction_Key			SRC_TransactionID  EncounterID  PatientID	  ProviderID  DeptID   VisitDate   ServiceDate  PaidDate	VisitType  Amount  AmountType  PaidAmount  
+TRANS000001-HospitalA	TRANS000001	   	   ENC001204	HOSP1-002372  PROV0456	  DEPT002  02-08-2024  25-05-2024	15-06-2024  Routine	   988.36  Medicare	   315.70	   
+TRANS000002-HospitalA	TRANS000002	   	   ENC000029	HOSP1-002329  PROV0321 	  DEPT013  02-05-2024  14-09-2024	19-09-2024	Emergency  291.26  Medicare	   667.98	   
+TRANS000001-HospitalB	TRANS000001	   	   ENC000512	HOSP1-002609  PROV0434	  DEPT016  31-08-2024  03-04-2024	06-02-2024	Follow-up  616.86  Self-pay	   234.57
+TRANS000002-HospitalB	TRANS000002	   	   ENC009236	HOSP1-004031  PROV0382	  DEPT017  10-04-2024  25-08-2024	01-02-2024	Follow-up  680.41  Insurance   445.86
+
+ClaimID	       PayorID	    ProcedureCode ICDCode	  LineOfBusiness  MedicaidID  MedicareID  SRC_InsertDate  SRC_ModifiedDate  datasource  is_qurantined inserted_date inserted_date is_current
+CLAIM533365	   PAYOR4707    94521		  I19.4	      Commercial	  MEDI24173	  MCARE19466  16-01-2021  	  27-12-2021		HospitalA   FALSE		 
+CLAIM629724	   PAYOR1481    51588		  I54.0		  Self-Pay		  MEDI63110	  MCARE97946  06-02-2021      26-01-2022 		HospitalA   FALSE
+CLAIM879364	   PAYOR9066    93411		  I95.4		  Commercial	  MEDI13625	  MCARE38344  01-10-2021      15-01-2024		HospitalB   FALSE
+CLAIM835197	   PAYOR1013    86401		  I39.5		  Self-Pay		  MEDI20311	  MCARE53178  20-03-2020      29-01-2023		HospitalB   FALSE
+
+
+-- 2. Create transactions Table in BigQuery
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.silver_dataset.transactions`(
+	Transaction_Key	  STRING,
+    SRC_TransactionID STRING,
+	EncounterID       STRING,
+    PatientID         STRING,
+    ProviderID        STRING,
+    DeptID            STRING,
+    VisitDate         DATE,
+    ServiceDate       DATE,
+    PaidDate	      DATE,
+    VisitType         STRING,
+    Amount            NUMERIC,
+    AmountType        STRING,
+    PaidAmount        NUMERIC,
+    ClaimID	          STRING,
+    PayorID	          STRING,
+    ProcedureCode     INT64,
+    ICDCode	          STRING,
+    LineOfBusiness	  STRING,
+    MedicaidID	      STRING,
+    MedicareID	      STRING,
+    SRC_InsertDate	  DATE,
+    SRC_ModifiedDate  DATE,
+    datasource        STRING,
+    is_qurantined     BOOL,
+	inserted_date	  DATE,
+    modified_date     DATE,
+	is_current		  BOOL
+	)
+	
+-- 3. Apply SCD Type 2 Logic with MERGE
+MERGE INTO `avd-databricks-demo.silver_dataset.transactions` AS target
+USING `avd-databricks-demo.silver_dataset.quality_checks` AS source
+ON target.Transaction_Key = source.Transaction_Key and target.is_current = TRUE
+
+-- Step 1: Mark existing records as historical if any column has changed
+WHEN MATCHED AND (
+					target.SRC_TransactionID  <> source.SRC_TransactionID OR
+					target.EncounterID		  <> source.EncounterID       OR
+					target.PatientID		  <> source.PatientID	      OR
+					target.ProviderID	      <> source.ProviderID        OR
+					target.DeptID   		  <> source.DeptID            OR
+					target.VisitDate   		  <> source.VisitDate         OR
+					target.ServiceDate  	  <> source.ServiceDate       OR
+					target.PaidDate			  <> source.PaidDate	      OR
+					target.VisitType  		  <> source.VisitType         OR
+					target.Amount  			  <> source.Amount            OR
+					target.AmountType  		  <> source.AmountType        OR
+					target.PaidAmount  		  <> source.PaidAmount        OR
+					target.ClaimID	    	  <> source.ClaimID	          OR
+					target.PayorID	   		  <> source.PayorID	          OR
+					target.ProcedureCode	  <> source.ProcedureCode     OR
+					target.ICDCode			  <> source.ICDCode	          OR
+					target.LineOfBusiness	  <> source.LineOfBusiness 	  OR
+					target.MedicaidID		  <> source.MedicaidID	      OR
+					target.MedicareID		  <> source.MedicareID	      OR
+					target.SRC_InsertDate	  <> source.SRC_InsertDate	  OR
+					target.SRC_ModifiedDate   <> source.SRC_ModifiedDate  OR
+					target.datasource		  <> source.datasource        OR
+                    target.is_qurantined      <> source.is_qurantined    
+)
+THEN UPDATE SET 
+target.is_current = FALSE,
+target.modified_date = CURRENT_TIMESTAMP()
+
+-- Step 2: Insert new and updated records as the latest active records
+WHEN NOT MATCHED THEN INSERT(
+								Transaction_Key,
+                                SRC_TransactionID,
+                                EncounterID,  
+                                PatientID,	  
+                                ProviderID,  
+                                DeptID,   
+                                VisitDate,   
+                                ServiceDate,  
+                                PaidDate,	
+                                VisitType,  
+                                Amount,  
+                                AmountType,  
+                                PaidAmount,  
+                                ClaimID,	    
+                                PayorID,	   
+                                ProcedureCode
+                                ICDCode,	
+                                LineOfBusiness,	
+                                MedicaidID,	
+                                MedicareID,	
+                                SRC_InsertDate,	
+                                SRC_ModifiedDate,  
+                                datasource,
+                                is_qurantined,
+                                inserted_date,
+								modified_date,
+								is_current		  
+							)
+							VALUES(
+								source.Transaction_Key,
+							    source.SRC_TransactionID,
+							    source.EncounterID,  
+							    source.PatientID,	  
+							    source.ProviderID,  
+							    source.DeptID,   
+							    source.VisitDate,   
+							    source.ServiceDate,  
+							    source.PaidDate,	
+							    source.VisitType,  
+							    source.Amount,  
+							    source.AmountType,  
+							    source.PaidAmount,  
+							    source.ClaimID,	    
+							    source.PayorID,	   
+							    source.ProcedureCode
+							    source.ICDCode,	
+							    source.LineOfBusiness,	
+							    source.MedicaidID,	
+							    source.MedicareID,	
+							    source.SRC_InsertDate,	
+							    source.SRC_ModifiedDate, 
+							    source.datasource,
+							    source.is_qurantined,
+							    CURRENT_TIMESTAMP(),
+								CURRENT_TIMESTAMP(),
+								TRUE
+							);
+							
+DROP TABLE IF EXISTS `avd-databricks-demo.silver_dataset.quality_checks`;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

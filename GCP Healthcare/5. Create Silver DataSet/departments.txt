@@ -1,0 +1,36 @@
+-- 1. Create table departments by Merge Data from Hospital A & B  
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.silver_dataset.departments` (
+    Dept_Id STRING,
+    SRC_Dept_Id STRING,
+    Name STRING,
+    datasource STRING,
+    is_quarantined BOOLEAN
+);
+
+-- 2. Truncate Silver Table Before Inserting 
+TRUNCATE TABLE `avd-databricks-demo.silver_dataset.departments`;
+
+
+-- 3. full load by Inserting merged Data
+INSERT INTO `avd-databricks-demo.silver_dataset.departments`
+SELECT DISTINCT 
+CONCAT(DeptID,'-',datasource) as DeptID, 
+DeptID as SRC_DeptID, 
+Name, 
+datasource,
+CASE WHEN DeptID IS NULL OR Name IS NULL THEN TRUE ELSE FALSE END AS is_qurantined
+
+FROM(
+SELECT DISTINCT *, 'HospitalA' as datasource FROM `avd-databricks-demo.bronze_dataset.departments_ha`
+UNION ALL
+SELECT DISTINCT *, 'HospitalB' as datasource FROM `avd-databricks-demo.bronze_dataset.departments_hb`
+)
+
+DeptID			Name		datasource
+DEPT001			Emergency	HospitalA
+DEPT002			Cardiology	HospitalB
+
+DeptID			SRC_DeptID	Name		datasource 	is_qurantined
+DEPT001-HospitalA	DEPT001		Emergency	HospitalA  	FALSE
+DEPT002-HospitalB	DEPT002		Cardiology	HospitalB	FALSE
+

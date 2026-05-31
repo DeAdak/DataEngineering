@@ -1,0 +1,183 @@
+avd-databricks-demo.bronze_dataset.claims
+---------
+ClaimID		TransactionID	PatientID		EncounterID	ProviderID	DeptID	ServiceDate	ClaimDate	PayorID				ClaimAmount	PaidAmount	ClaimStatus	PayorType	Deductible	
+CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		Pending		Self-pay	279.32		
+CLAIM000002	TRANS004722		HOSP1-000299	ENC001313	PROV0260	DEPT002	21-05-2024	10-05-2024	BlueCross			3871.53		3028.71		Approved	Private		250.16		
+CLAIM000001	TRANS001819		HOSP1-001494	ENC001805	PROV0242	DEPT007	26-08-2024	05-10-2024	UnitedHealthcare	4600.39		3228.9		Approved	Government	101.31
+CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		Paid		Private		125.13
+
+
+Coinsurance	Copay	InsertDate	ModifiedDate	datasource
+170.77		13.01	15-06-2022	03-03-2024		HospitalA
+100.11		11.37	13-11-2023	15-05-2023		HospitalA
+99.56		45.99	13-01-2023	10-01-2020		HospitalB
+96.39		30.87	03-10-2024	08-02-2023		HospitalB
+
+
+avd-databricks-demo.silver_dataset.quality_checks
+---------
+Claim_Key				SRC_ClaimID	TransactionID	PatientID		EncounterID	ProviderID	DeptID	ServiceDate	ClaimDate	PayorID				ClaimAmount	PaidAmount	
+CLAIM000001-HospitalA 	CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		
+CLAIM000002-HospitalA 	CLAIM000002	TRANS004722		HOSP1-000299	ENC001313	PROV0260	DEPT002	21-05-2024	10-05-2024	BlueCross			3871.53		3028.71		
+CLAIM000001-HospitalB 	CLAIM000001	TRANS001819		HOSP1-001494	ENC001805	PROV0242	DEPT007	26-08-2024	05-10-2024	UnitedHealthcare	4600.39		3228.9		
+CLAIM000002-HospitalB 	CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		
+
+
+ClaimStatus	PayorType	Deductible	Coinsurance	Copay	SRC_InsertDate	SRC_ModifiedDate	datasource	is_qurantined
+Pending		Self-pay	279.32		170.77		13.01	15-06-2022		03-03-2024			HospitalA	FALSE
+Approved	Private		250.16		100.11		11.37	13-11-2023		15-05-2023			HospitalA	FALSE
+Approved	Government	101.31		99.56		45.99	13-01-2023		10-01-2020			HospitalB	FALSE
+Paid		Private		125.13		96.39		30.87	03-10-2024		08-02-2023			HospitalB	FALSE
+
+quality_checks
+-------------
+CREATE OR REPLACE TABLE `avd-databricks-demo.silver_dataset.quality_checks` AS
+SELECT DISTINCT CONCAT(ClaimID,'-',datasource) as Claim_Key,
+				ClaimID AS SRC_ClaimID,
+				TransactionID,
+				PatientID,
+				EncounterID,
+				ProviderID,
+				DeptID,
+				ServiceDate,
+				ClaimDate,
+				PayorID,
+				ClaimAmount,
+				PaidAmount,
+				ClaimStatus,
+				PayorType,
+				Deductible,
+				Coinsurance,
+				Copay,
+				InsertDate AS SRC_InsertDate,
+				ModifiedDate AS SRC_ModifiedDate,
+				datasource,
+				CASE WHEN SRC_ClaimID IS NULL OR PatientID IS NULL OR TransactionID IS NULL OR LOWER(ClaimStatus) = 'null' THEN TRUE ELSE END AS is_qurantined
+FROM `avd-databricks-demo.bronze_dataset.claims`
+
+
+avd-databricks-demo.silver_dataset.claims
+---------
+Claim_Key				SRC_ClaimID	TransactionID	PatientID		EncounterID	ProviderID	DeptID	ServiceDate	ClaimDate	PayorID				ClaimAmount	PaidAmount	
+CLAIM000001-HospitalA 	CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		
+CLAIM000002-HospitalA 	CLAIM000002	TRANS004722		HOSP1-000299	ENC001313	PROV0260	DEPT002	21-05-2024	10-05-2024	BlueCross			3871.53		3028.71		
+CLAIM000001-HospitalB 	CLAIM000001	TRANS001819		HOSP1-001494	ENC001805	PROV0242	DEPT007	26-08-2024	05-10-2024	UnitedHealthcare	4600.39		3228.9		
+CLAIM000002-HospitalB 	CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		
+
+
+ClaimStatus	PayorType	Deductible	Coinsurance	Copay	SRC_InsertDate	SRC_ModifiedDate	datasource	is_qurantined	modified_date	inserted_date	is_current
+Pending		Self-pay	279.32		170.77		13.01	15-06-2022		03-03-2024			HospitalA	FALSE			
+Approved	Private		250.16		100.11		11.37	13-11-2023		15-05-2023			HospitalA	FALSE
+Approved	Government	101.31		99.56		45.99	13-01-2023		10-01-2020			HospitalB	FALSE
+Paid		Private		125.13		96.39		30.87	03-10-2024		08-02-2023			HospitalB	FALSE
+
+avd-databricks-demo.silver_dataset.claims
+------------------------------------------
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.silver_dataset.claims`(
+							Claim_Key		  STRING,
+                            SRC_ClaimID       STRING,
+                            TransactionID     STRING,
+                            PatientID         STRING,
+                            EncounterID       STRING,
+                            ProviderID        STRING,
+                            DeptID            STRING,
+                            ServiceDate       DATE,
+                            ClaimDate         DATE,
+                            PayorID           STRING,
+                            ClaimAmount       NUMERIC,
+                            PaidAmount        NUMERIC,
+                            ClaimStatus       STRING,
+                            PayorType         STRING,
+                            Deductible        NUMERIC,
+                            Coinsurance       NUMERIC,
+                            Copay             NUMERIC,
+                            SRC_InsertDate    DATE,
+                            SRC_ModifiedDate  DATE,
+                            datasource        STRING,
+							is_qurantined     BOOL,
+							inserted_date	  DATE,
+							modified_date	  DATE,
+							is_current		  BOOL
+							);
+							
+MERGE INTO `avd-databricks-demo.silver_dataset.claims` AS target
+USING 'avd-databricks-demo.silver_dataset.quality_checks' AS source
+ON target.is_current = TRUE AND target.Claim_Key = source.Claim_Key
+WHEN MATCHED AND (		
+					source.SRC_ClaimID     <> target.SRC_ClaimID,     
+					source.TransactionID   <> target.TransactionID,   
+					source.PatientID       <> target.PatientID,       
+					source.EncounterID     <> target.EncounterID,     
+					source.ProviderID      <> target.ProviderID,      
+					source.DeptID          <> target.DeptID,          
+					source.ServiceDate     <> target.ServiceDate,     
+					source.ClaimDate       <> target.ClaimDate,       
+                    source.PayorID         <> target.PayorID,         
+                    source.ClaimAmount     <> target.ClaimAmount,     
+                    source.PaidAmount      <> target.PaidAmount,      
+                    source.ClaimStatus     <> target.ClaimStatus,     
+                    source.PayorType       <> target.PayorType,       
+                    source.Deductible      <> target.Deductible,      
+                    source.Coinsurance     <> target.Coinsurance,     
+                    source.Copay           <> target.Copay,           
+                    source.SRC_InsertDate  <> target.SRC_InsertDate,  
+                    source.SRC_ModifiedDate<> target.SRC_ModifiedDate,
+                    source.datasource      <> target.datasource,      
+                    source.is_qurantined   <> target.is_qurantined
+) THEN
+UPDATE SET target.is_current = FALSE, target.modified_date = CURRENT_TIMESTAMP()
+
+WHEN NOT MATCHED THEN INSERT(
+							Claim_Key,		
+							SRC_ClaimID,     
+                            TransactionID,  
+                            PatientID,       
+                            EncounterID,     
+                            ProviderID,      
+                            DeptID,          
+                            ServiceDate,     
+                            ClaimDate,       
+                            PayorID,         
+                            ClaimAmount,     
+                            PaidAmount,      
+                            ClaimStatus,     
+                            PayorType,       
+                            Deductible,      
+                            Coinsurance,     
+                            Copay,           
+                            SRC_InsertDate,  
+                            SRC_ModifiedDate,
+                            datasource,      
+                            is_qurantined,   
+                            inserted_date,	
+                            modified_date,	
+                            is_current
+							)
+VALUES 						(
+							source.Claim_Key,		
+                            source.SRC_ClaimID,     
+                            source.TransactionID,   
+                            source.PatientID,       
+                            source.EncounterID,     
+                            source.ProviderID,      
+                            source.DeptID,          
+                            source.ServiceDate,     
+                            source.ClaimDate,       
+                            source.PayorID,         
+                            source.ClaimAmount,     
+                            source.PaidAmount,      
+                            source.ClaimStatus,     
+                            source.PayorType,       
+                            source.Deductible,      
+                            source.Coinsurance,     
+                            source.Copay,           
+                            source.SRC_InsertDate,  
+                            source.SRC_ModifiedDate,
+                            source.datasource,      
+                            source.is_qurantined,
+							CURRENT_TIMESTAMP(),
+							CURRENT_TIMESTAMP(),
+							TRUE
+);
+
+DROP TABLE avd-databricks-demo.silver_dataset.quality_checks;

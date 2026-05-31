@@ -1,0 +1,22 @@
+BQ_PROJECT = "avd-databricks-demo"
+BQ_AUDIT_TABLE = 'avd-databricks-demo.temp_dataset.audit_log'
+
+This query will not create the dataset. It will only create the table, and it will actually fail with an error if the dataset does not already exist. In Google BigQuery, datasets act like folders that hold tables. BigQuery cannot automatically create a "folder" (dataset) while creating a "file" (table).
+
+1. Why it will fail
+If temp_dataset does not exist in your project, BigQuery will return a Not found: Dataset error.
+
+2. How to fix it
+You must explicitly create the dataset first before running your table creation query. You can do this by running two separate commands.
+-- 1. Create the dataset first
+CREATE SCHEMA IF NOT EXISTS `avd-databricks-demo`.temp_dataset;
+
+-- 2. Create the table
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo`.temp_dataset.audit_log (
+  datasource      STRING,
+  tablename       STRING,
+  load_timestamp  TIMESTAMP,
+  loadtype        STRING,
+  record_count    INT64,
+  status          STRING
+);
