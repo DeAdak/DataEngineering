@@ -1,0 +1,68 @@
+A Parent DAG is an Apache Airflow Directed Acyclic Graph (DAG) that coordinates, schedules, or triggers other independent DAGs 
+(known as Child DAGs or SubDAGs).In modern Airflow architecture, instead of writing one massive, unmanageable file containing hundreds 
+of tasks, you break your workflows into smaller components and use a Parent DAG to manage the execution order.
+The standard industry practice is to use the TriggerDagRunOperator. This operator allows the Parent DAG to trigger 
+isolated, standalone Child DAGs.
+
+# 0. Library Imports
+#Every DAG script begins by importing the core components, operators, and required date utilities.
+import airflow
+from airflow import DAG
+from datetime import timedelta
+from airflow.providers.google.cloud.operators.bigquery import TriggerDagRunOperator
+
+# 1. Global Configurations
+
+
+# 2. Default Configuration Arguments
+A Python dictionary defines settings that are automatically passed down and applied to all tasks within the DAG, keeping the code clean 
+and maintainable.
+
+ARGS = {
+    "owner": "DEBABRATA ADAK",
+	#Airflow requires a fixed, concrete static date (like datetime(2026, 1, 1)) to initialize a DAG. Setting it to None causes a crash.
+    "start_date": datetime(2026, 1, 1),
+    "depends_on_past": False,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "email": ["***@gmail.com"],
+    "email_on_success": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5)
+
+# 3. DAG Definition
+
+with DAG(
+    dag_id="parent_dag",
+    schedule_interval="0 5 * * *",
+    description="Parent DAG to trigger PySpark and BigQuery DAGs",
+    default_args=ARGS,
+    tags=["parent", "orchestration", "etl"]
+) as dag:
+
+
+# 4. Helper Functions
+
+# 5. Task Instantiation
+trigger_pyspark_dag = TriggerDagRunOperator(
+    task_id="trigger_pyspark_dag",
+    trigger_dag_id="gcs_pyspark_dataproc_pipeline", # Must match the dag_id of the child
+    wait_for_completion=True,  						# Wait for pyspark job to finish completely
+	poke_interval=15                    			# Check child status every 15 seconds
+    )
+
+trigger_bigquery_dag = TriggerDagRunOperator(
+    task_id="trigger_bigquery_dag",
+    trigger_dag_id="bigquery_dag",
+    wait_for_completion=True,  						# Wait for BQ job to finish completely
+	poke_interval=15                    			# Check child status every 15 seconds
+    )
+
+# 6. Graph Topology
+trigger_pyspark_dag >> trigger_bigquery_dag
+
+#Key Benefits of This PatternComponent 
+Isolation: If your pyspark transformation logic breaks, you can clear and re-run just the gcs_pyspark_dataproc_pipeline DAG without re-running the 
+entire upstream Bronze pipeline.
+UI Cleanliness: Your main Airflow dashboard stays clean. You see one master pipeline pipeline instead of a massive, messy web of 50 consecutive tasks.
+Dynamic Parameters: You can pass data from the Parent down to the Child dynamically using the conf parameter inside the operator

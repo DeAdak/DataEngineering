@@ -5,7 +5,7 @@ Create cluster --> Web interfaces --> Jupyter Lab
 read	spark.read	bq_client		storage_client
 write				spark.write		storage_client
 
-claims TABLE
+claims BQ TABLE
 ------------
 CREATE TABLE IF NOT EXISTS `avd-databricks-demo`.bronze_dataset.claims (
   ClaimID           STRING,
@@ -33,9 +33,9 @@ CREATE TABLE IF NOT EXISTS `avd-databricks-demo`.bronze_dataset.claims (
 claims.py
 ---------
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import input_file_name,when,contains
+from pyspark.sql.functions import input_file_name, when, col, to_date
 
-
+# Initialize Spark Session
 spark = SparkSession.builder.appName('Claims').getOrCreate()
 
 # Google Cloud Storage (GCS) Configuration
@@ -45,22 +45,79 @@ TEMP_GCS_BUCKET = f'gs://{GCS_BUCKET}/temp/'
 
 #BigQuery Configuration
 BQ_PROJECT = 'avd-databricks-demo'
-BQ_CLAIMS_TABLE = f'{BQ_PROJECT}.bronze_dataset.claims'
+BQ_CLAIMS_TABLE = f'{BQ_PROJECT}.bronze_dataset.claims' # Note: Spark BQ connector prefers NO backticks in the string parameter
 
-By default, spark.read.csv reads all columns as STRING data types unless you explicitly define a schema or pass .option("inferSchema", "true").
-claims_df = (spark.read.option('inferSchema','true').csv(CLAIMS_FILE_PATH ,header = True))
+# claims_df = (spark.read.option('inferSchema','true').csv(CLAIMS_FILE_PATH ,header = True))
 
-claims_df = claims_df.withColumn('datasource',
-					when(contains(input_file_name(),'hospital1'),'HospitalA')
-					.when(contains(input_file_name(),'hospital2'),'HospitalB')
-					.otherwise('None')))
-					
+# By default, spark.read.csv reads all columns as STRING data types unless you explicitly define a schema or pass .option("inferSchema", "true").
+# inferSchema=True on a raw CSV. Spark will guess numeric fields as integers or doubles and dates as strings. This creates a type mismatch when 
+# writing to your BigQuery table, which strictly expects DATE and NUMERIC types, resulting in a BigQuery write failure. The dates must be explicitly 
+# cast to date types using to_date().
+
+# 1. Read raw CSV data 
+claims_df = spark.read.option('header', 'true').csv(CLAIMS_FILE_PATH)
+ 
+claims_df = claims_df.withColumn(
+    'datasource',
+    when(input_file_name().contains('hospital1'), 'HospitalA')
+    .when(input_file_name().contains('hospital2'), 'HospitalB')
+    .otherwise('None')
+)
+#.when(condition, value).when(condition, value).otherwise(value)
+
+
+# 2. Deduplicate records
 claims_df = claims_df.dropDuplicates()
 
-# inferSchema is not a valid option for writing data.inferSchema is an option used exclusively when reading raw files (like CSVs or JSON) to help Spark guess the data types. When you are writing a
- DataFrame to BigQuery, Spark already knows what types its columns are.
+claims.csv
+-----------
+ClaimID		TransactionID	PatientID		EncounterID	ProviderID	DeptID	ServiceDate	ClaimDate	PayorID				ClaimAmount	PaidAmount	ClaimStatus	PayorType	Deductible	
+CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		Pending		Self-pay	279.32		
+CLAIM000002	TRANS004722		HOSP1-000299	ENC001313	PROV0260	DEPT002	21-05-2024	10-05-2024	BlueCross			3871.53		3028.71		Approved	Private		250.16		
+CLAIM000001	TRANS001819		HOSP1-001494	ENC001805	PROV0242	DEPT007	26-08-2024	05-10-2024	UnitedHealthcare	4600.39		3228.9		Approved	Government	101.31
+CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		Paid		Private		125.13
+
+
+Coinsurance	Copay	InsertDate	ModifiedDate	datasource
+170.77		13.01	15-06-2022	03-03-2024		HospitalA
+100.11		11.37	13-11-2023	15-05-2023		HospitalA
+99.56		45.99	13-01-2023	10-01-2020		HospitalB
+96.39		30.87	03-10-2024	08-02-2023		HospitalB
+
+
+# 3. Explicitly cast columns to guarantee they match the BigQuery Table definition
+# This prevents write crashes caused by inferSchema guessing wrong types
+
+transformed_df = claims_df.select(
+    col("ClaimID").cast("string"),
+    col("TransactionID").cast("string"),
+    col("PatientID").cast("string"),
+    col("EncounterID").cast("string"),
+    col("ProviderID").cast("string"),
+    col("DeptID").cast("string"),
+    to_date(col("ServiceDate"), "yyyy-MM-dd").alias("ServiceDate"),  # Ensures strict BQ DATE format
+    to_date(col("ClaimDate"), "yyyy-MM-dd").alias("ClaimDate"),      # Ensures strict BQ DATE format
+    col("PayorID").cast("string"),
+    col("ClaimAmount").cast("decimal(38,9)").alias("ClaimAmount"),    # Matches BQ NUMERIC precision
+    col("PaidAmount").cast("decimal(38,9)").alias("PaidAmount"),      # Matches BQ NUMERIC precision
+    col("ClaimStatus").cast("string"),
+    col("PayorType").cast("string"),
+    col("Deductible").cast("decimal(38,9)").alias("Deductible"),
+    col("Coinsurance").cast("decimal(38,9)").alias("Coinsurance"),
+    col("Copay").cast("decimal(38,9)").alias("Copay"),
+    to_date(col("InsertDate"), "yyyy-MM-dd").alias("InsertDate"),
+    to_date(col("ModifiedDate"), "yyyy-MM-dd").alias("ModifiedDate"),
+    col("datasource").cast("string")
+)
+
+
+# 4. Save the data securely to BigQuery
+# inferSchema is not a valid option for writing data.inferSchema is an option used exclusively when reading raw files (like CSVs or JSON) to help 
+Spark guess the data types. When you are writing a DataFrame to BigQuery, Spark already knows what types its columns are.
 (claims_df.write.format('bigquery')
 				.option('table',BQ_CLAIMS_TABLE)
 				.option('temporaryGcsBucket',TEMP_GCS_BUCKET)
 				.mode('append')
 				.save())
+
+print("Claims data loaded successfully into BigQuery!

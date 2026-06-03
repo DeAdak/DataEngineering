@@ -1,0 +1,197 @@
+Cloud SQL
+Create INSTANCE(MySQL) --> Create DATABASE(HospitalA) --> Create TABLE --> IMPORT CSV DATA FROM GCS BUCKET
+Create INSTANCE(MySQL) --> Create DATABASE(HospitalB) --> Create TABLE --> IMPORT CSV DATA FROM GCS BUCKET
+
+Create tables based on CSV files data to fetch these tables using DataProc PySpark script and store them in GCS BUCKET as json files daily 
+in scheduled time.
+
+I omitted NOT NULL constraints to prevent potential system failures based on the standard rules of relational healthcare databases.
+If you want to enforce strict data integrity, you should only apply NOT NULL to the core structural fields that must always exist from day one.
+Like IDs, Visit dates,
+
+HospitalA
+---------++++++++++++++++++++
+1. Departments.csv
+DeptID	Name
+DEPT001	Emergency
+
+CREATE TABLE IF  EXIST departments(
+DeptID 	nvarchar(50),
+Name 	nvarchar(50),
+CONSTRAINT PK_departments PRIMARY KEY (DeptID)
+);
+
+2. Encounters.csv
+EncounterID	PatientID		EncounterDate	EncounterType	ProviderID	DepartmentID	ProcedureCode	InsertedDate	ModifiedDate
+ENC000001	HOSP1-001127	14-01-2020		Inpatient		PROV0133	DEPT019			97099			08-03-2023		01-03-2020
+
+CREATE TABLE IF  EXIST encounters(
+EncounterID 	nvarchar(50),
+PatientID		nvarchar(50),
+EncounterDate	date,
+EncounterType	nvarchar(50),
+ProviderID		nvarchar(50),
+DepartmentID	nvarchar(50),
+ProcedureCode	int,
+InsertedDate	date,
+ModifiedDate	date,
+CONSTRAINT PK_encounters PRIMARY KEY(EncounterID)
+);
+
+3. Patients.csv
+PatientID		FirstName	LastName	MiddleName	SSN			PhoneNumber				Gender	DOB			Address								ModifiedDate
+HOSP1-000001	Rick		Russo		U			188-23-9828	+1-630-829-7585x0769	Female	04-06-1937	Unit 0915 Box 7064, DPO AA 82777	25-05-2020
+
+CREATE TABLE IF  EXIST patients(
+PatientID		nvarchar(50),
+FirstName		nvarchar(50),
+LastName		nvarchar(50),
+MiddleName		nvarchar(50),
+SSN				nvarchar(50),
+PhoneNumber		nvarchar(50),
+Gender			nvarchar(50),
+DOB				date,
+Address			nvarchar(100),
+ModifiedDate	date,
+CONSTRAINT PK_patients PRIMARY KEY(PatientID)
+);
+
+4. Providers.csv
+ProviderID	FirstName	LastName	Specialization	DeptID	NPI
+H1-PROV0001	Brandon		Harper		Oncology		DEPT018	3086631719
+
+CREATE TABLE IF  EXIST providers(
+ProviderID		nvarchar(50),
+FirstName		nvarchar(50),
+LastName		nvarchar(50),
+Specialization	nvarchar(50),
+DeptID			nvarchar(50),
+NPI				bigint,
+CONSTRAINT PK_providers PRIMARY KEY(ProviderID)
+);
+
+5. Transactions.csv
+TransactionID	EncounterID	PatientID		ProviderID	DeptID	VisitDate	ServiceDate	PaidDate	VisitType	Amount				AmountType	PaidAmount			ClaimID		
+TRANS000001		ENC001204	HOSP1-002372	PROV0456	DEPT002	02-08-2024	25-05-2024	15-06-2024	Routine		988.3699951171875	Medicare	315.70001220703125	CLAIM533365
+
+PayorID		ProcedureCode	ICDCode	LineOfBusiness	MedicaidID	MedicareID	InsertDate	ModifiedDate
+PAYOR4707	94521			I19.4	Commercial		MEDI24173	MCARE19466	16-01-2021	27-12-2021
+
+CREATE TABLE IF  EXIST transactions(
+TransactionID	nvarchar(50),
+EncounterID		nvarchar(50),
+PatientID		nvarchar(50),
+ProviderID		nvarchar(50),
+DeptID			nvarchar(50),
+VisitDate		date,
+ServiceDate		date,
+PaidDate		date,
+VisitType		nvarchar(50),
+Amount			float,
+AmountType		nvarchar(50),
+PaidAmount		float,
+ClaimID			nvarchar(50),
+PayorID			nvarchar(50),
+ProcedureCode	int,
+ICDCode			nvarchar(50),
+LineOfBusiness	nvarchar(50),
+MedicaidID		nvarchar(50),
+MedicareID		nvarchar(50),
+InsertDate		date,
+ModifiedDate	date,
+CONSTRAINT PK_transactions PRIMARY KEY(TransactionID)
+);
+
+
+HospitalB
+---------+++++++++++++++++
+1. Departments.csv
+DeptID	Name
+DEPT001	Emergency
+
+CREATE TABLE IF  EXIST departments(
+DeptID 	nvarchar(50),
+Name 	nvarchar(50),
+CONSTRAINT PK_departments PRIMARY KEY (DeptID)
+);
+
+2. Encounters.csv
+EncounterID	PatientID		EncounterDate	EncounterType	ProviderID	DepartmentID	ProcedureCode	InsertedDate	ModifiedDate
+ENC000001	HOSP1-001127	14-01-2020		Inpatient		PROV0133	DEPT019			97099			08-03-2023		01-03-2020
+
+CREATE TABLE IF  EXIST encounters(
+EncounterID 	nvarchar(50),
+PatientID		nvarchar(50),
+EncounterDate	date,
+EncounterType	nvarchar(50),
+ProviderID		nvarchar(50),
+DepartmentID	nvarchar(50),
+ProcedureCode	int,
+InsertedDate	date,
+ModifiedDate	date,
+CONSTRAINT PK_encounters PRIMARY KEY(EncounterID)
+);
+
+3. Patients.csv
+ID				F_Name		L_Name	M_Name	SSN			PhoneNumber	Gender	DOB			Address											Updated_Date
+HOSP1-000001	Victoria	Gamble	Q		318-87-5123	4902994299	Male	24-12-1994	7912 Arthur Loaf Apt. 907, Julieville, AK 38866	19-06-2021
+
+CREATE TABLE IF  EXIST patients(
+ID				nvarchar(50),
+F_Name			nvarchar(50),
+L_Name			nvarchar(50),
+M_Name			nvarchar(50),
+SSN				nvarchar(50),
+PhoneNumber		nvarchar(50),
+Gender			nvarchar(50),
+DOB				date,
+Address			nvarchar(100),
+Updated_Date	date,
+CONSTRAINT PK_patients PRIMARY KEY(ID)
+);
+
+4. Providers.csv
+ProviderID	FirstName	LastName	Specialization	DeptID	NPI
+H1-PROV0001	Brandon		Harper		Oncology		DEPT018	3086631719
+
+CREATE TABLE IF  EXIST providers(
+ProviderID		nvarchar(50),
+FirstName		nvarchar(50),
+LastName		nvarchar(50),
+Specialization	nvarchar(50),
+DeptID			nvarchar(50),
+NPI				bigint,
+CONSTRAINT PK_providers PRIMARY KEY(ProviderID)
+);
+
+5. Transactions.csv
+TransactionID	EncounterID	PatientID		ProviderID	DeptID	VisitDate	ServiceDate	PaidDate	VisitType	Amount				AmountType	PaidAmount			ClaimID		
+TRANS000001		ENC001204	HOSP1-002372	PROV0456	DEPT002	02-08-2024	25-05-2024	15-06-2024	Routine		988.3699951171875	Medicare	315.70001220703125	CLAIM533365
+
+PayorID		ProcedureCode	ICDCode	LineOfBusiness	MedicaidID	MedicareID	InsertDate	ModifiedDate
+PAYOR4707	94521			I19.4	Commercial		MEDI24173	MCARE19466	16-01-2021	27-12-2021
+
+CREATE TABLE IF  EXIST transactions(
+TransactionID	nvarchar(50),
+EncounterID		nvarchar(50),
+PatientID		nvarchar(50),
+ProviderID		nvarchar(50),
+DeptID			nvarchar(50),
+VisitDate		date,
+ServiceDate		date,
+PaidDate		date,
+VisitType		nvarchar(50),
+Amount			float,
+AmountType		nvarchar(50),
+PaidAmount		float,
+ClaimID			nvarchar(50),
+PayorID			nvarchar(50),
+ProcedureCode	int,
+ICDCode			nvarchar(50),
+LineOfBusiness	nvarchar(50),
+MedicaidID		nvarchar(50),
+MedicareID		nvarchar(50),
+InsertDate		date,
+ModifiedDate	date,
+CONSTRAINT PK_transactions PRIMARY KEY(TransactionID)
+);
