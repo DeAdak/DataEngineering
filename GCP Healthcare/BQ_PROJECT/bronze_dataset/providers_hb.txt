@@ -1,5 +1,0 @@
-CREATE EXTERNAL TABLE IF NOT EXISTS `avd-databricks-demo.bronze_dataset.providers_hb` 
-OPTIONS (
-  format = 'JSON',
-  uris = ['gs://healthcare-bucket-22032025/landing/HospitalB/providers/*.json']
-);
