@@ -1,0 +1,96 @@
+ProviderID	FirstName	LastName	Specialization		DeptID	NPI
+H1-PROV0001	Brandon		Harper		Oncology			DEPT018	3086631719
+H1-PROV0002	Luke		Clark		Emergency Medicine	DEPT006	1265568618
+
+ProviderID	FirstName	LastName	Specialization		DeptID	NPI			datasource	is_quarantined
+H1-PROV0001	Brandon		Harper		Oncology			DEPT018	3086631719	HospitalA	FALSE
+H1-PROV0002	Luke		Clark		Emergency Medicine	DEPT006	1265568618	HospitalB	FALSE
+
+CREATE OR REPLACE TABLE `avd-databricks-demo.silver_dataset.providers`(
+	ProviderID			STRING,
+	FirstName			STRING,
+	LastName			STRING,
+	Specialization		STRING,
+	DeptID				STRING,
+	NPI 				INT64,
+	datasource 			STRING,
+	is_quarantined 		BOOL,
+	insert_timestamp 	TIMESTAMP
+	)
+	CLUSTER BY ProviderID,datasource AS ( 
+	WITH combined_source AS (
+		SELECT DISTINCT ProviderID, FirstName, LastName, Specialization, DeptID, SAFE_CAST(NPI AS INT64) AS NPI, 'HospitalA' AS datasource 
+		FROM `avd-databricks-demo.bronze_dataset.providers_ha`
+		
+		UNION ALL
+		
+		SELECT DISTINCT ProviderID, FirstName, LastName, Specialization, DeptID, NPI, 'HospitalB' AS datasource 
+		FROM `avd-databricks-demo.bronze_dataset.providers_hb`
+		),
+		
+		cleaned_source AS (
+		SELECT DISTINCT 
+			ProviderID, 
+			FirstName, 
+			LastName, 
+			Specialization, 
+			DeptID, 
+			NPI, 
+			datasource,
+			CASE WHEN ProviderID IS NULL OR 
+						DeptID IS NULL
+					THEN TRUE
+					ELSE FALSE
+			END AS is_quarantined,
+			CURRENT_TIMESTAMP() AS insert_timestamp
+		FROM combined_source
+		)
+		
+		SELECT ProviderID, 
+				FirstName, 
+				LastName, 
+				Specialization, 
+				DeptID, 
+				NPI, 
+				datasource,
+				is_quarantined,
+				insert_timestamp
+		FROM cleaned_source
+	);
+
+##-------------------------------------------##
+-- 1. Create table providers by Merge Data from Hospital A & B  
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.silver_dataset.providers` (
+    ProviderID STRING,
+    FirstName STRING,
+    LastName STRING,
+    Specialization STRING,
+    DeptID STRING,
+    NPI INT64,
+    datasource STRING,
+    is_quarantined BOOLEAN
+);
+
+-- 2. Truncate Silver Table Before Inserting 
+TRUNCATE TABLE `avd-databricks-demo.silver_dataset.providers`;
+
+-- 3. full load by Inserting merged Data 
+INSERT INTO `avd-databricks-demo.silver_dataset.providers`
+SELECT DISTINCT 
+    ProviderID,
+    FirstName,
+    LastName,
+    Specialization,
+    DeptID,
+    CAST(NPI AS INT64) AS NPI,
+    datasource,
+    CASE 
+        WHEN ProviderID IS NULL OR DeptID IS NULL THEN TRUE 
+        ELSE FALSE 
+    END AS is_quarantined
+FROM (
+    SELECT DISTINCT *, 'HospitalA' AS datasource FROM `avd-databricks-demo.bronze_dataset.providers_ha`
+    UNION ALL
+    SELECT DISTINCT *, 'HospitalB' AS datasource FROM `avd-databricks-demo.bronze_dataset.providers_hb`
+);
+

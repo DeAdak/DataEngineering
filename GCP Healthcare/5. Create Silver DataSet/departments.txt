@@ -1,0 +1,129 @@
+avd-databricks-demo.bronze_dataset.departments
+----------------------------------------------
+DeptID			Name
+DEPT001			Emergency
+DEPT002			Cardiology
+
+UNION ALL
+---------
+DeptID			Name		datasource
+DEPT001			Emergency	HospitalA
+DEPT002			Cardiology	HospitalB
+
+avd-databricks-demo.silver_dataset.departments
+----------------------------------------------
+DeptID				SRC_DeptID	Name		datasource 	is_qurantined
+DEPT001-HospitalA	DEPT001		Emergency	HospitalA  	FALSE
+DEPT002-HospitalB	DEPT002		Cardiology	HospitalB	FALSE
+
+-- 1. Create table departments by Merge Data from Hospital A & B  
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.silver_dataset.departments` (
+    Dept_Id STRING,
+    SRC_Dept_Id STRING,
+    Name STRING,
+    datasource STRING,
+    is_quarantined BOOLEAN
+);
+
+-- 2. Truncate Silver Table Before Inserting 
+TRUNCATE TABLE `avd-databricks-demo.silver_dataset.departments`;
+# The "Data-Loss" Window Risk: Running a TRUNCATE before an INSERT introduces a temporary data vacuum. If the subsequent 
+INSERT fails midway due to a network glitch or schema change, your downstream dashboards will be left completely empty.
+
+-- 3. full load by Inserting merged Data
+INSERT INTO `avd-databricks-demo.silver_dataset.departments`
+SELECT DISTINCT 
+CONCAT(DeptID,'-',datasource) as DeptID, 
+DeptID as SRC_DeptID, 
+Name, 
+datasource,
+CASE WHEN DeptID IS NULL OR Name IS NULL THEN TRUE ELSE FALSE END AS is_quarantined
+
+FROM(
+SELECT DISTINCT *, 'HospitalA' as datasource FROM `avd-databricks-demo.bronze_dataset.departments_ha`
+UNION ALL
+SELECT DISTINCT *, 'HospitalB' as datasource FROM `avd-databricks-demo.bronze_dataset.departments_hb`
+);
+
+###----------------------------------###
+
+To make a Full Load (Truncate & Insert) pipeline truly enterprise-grade and industry-standard in Google BigQuery, 
+you must solve the Data-Vacuum Dilemma.Using a raw TRUNCATE TABLE followed by an INSERT creates a window of time where your 
+table is completely empty. If your INSERT query fails mid-flight due to an upstream data issue, your production dashboards 
+break, and your historical records are wiped out.
+
+The Industry-Standard Solution: CREATE OR REPLACE TABLE (Atomic Overwrite)In BigQuery, using CREATE OR REPLACE TABLE is an 
+atomic transaction. Under the hood, BigQuery builds the new table completely in memory first. Once successful, it instantly 
+swaps the old table with the new one. This ensures zero downtime—if the query fails, your old data remains 100% intact and 
+available.
+
+avd-databricks-demo.bronze_dataset.departments
+----------------------------------------------
+DeptID			Name
+DEPT001			Emergency
+DEPT002			Cardiology
+
+-- Execute an Atomic Full-Load Overwrite with Zero Downtime
+CREATE OR REPLACE TABLE `avd-databricks-demo.silver_dataset.departments` (
+	DeptID				STRING,
+	SRC_DeptID         	STRING,
+	Name               	STRING,
+	datasource         	STRING,
+	is_quarantined     	BOOL,
+	insert_timestamp    TIMESTAMP -- Production Audit Trail: Tracks exactly when this snapshot full-load ran
+)           
+-- Performance Optimization: Speeds up downstream analytics joins when connecting claims to departments 
+CLUSTER BY DeptID,datasource
+
+AS ( WITH combined_source AS(
+		-- Consolidate hospital source systems in memory
+		SELECT DISTINCT DeptID,Name,'HospitalA' AS datasource FROM `avd-databricks-demo.bronze_dataset.departments_ha`
+		UNION ALL
+		SELECT DISTINCT DeptID,Name,'HospitalB' AS datasource FROM `avd-databricks-demo.bronze_dataset.departments_hb`
+							),
+	cleaned_source AS (
+		SELECT DISTINCT
+			CONCAT(DeptID,'-',datasource) AS DeptID,
+			DeptID AS SRC_DeptID,
+			Name,
+			datasource,
+			-- Data Quality Quarantine Check
+			CASE
+				WHEN DeptID IS NULL OR Name IS NULL
+					THEN TRUE
+					ELSE FALSE
+			END AS is_quarantined,
+			CURRENT_TIMRSTAMP() AS insert_timestamp
+		FROM combined_source
+					)
+
+	SELECT DeptID,
+		SRC_DeptID,
+		Name,
+		datasource,
+		is_quarantined,
+		insert_timestamp
+	FROM cleaned_source
+);
+
+Atomic Fault Tolerance: 
+Downstream users and dashboards will never experience a "blank table" state. If the upstream bronze data breaks, the execution halts, and the old version of the departments table stays live.
+Cost Optimization via Clustering: 
+Because department reference tables are small master tables used to join against large transactional fact tables (like claims), using CLUSTER BY Dept_Id, datasource ensures BigQuery performs high-speed co-located joins with minimal slot usage.
+Elimination of Multi-Step Costs: 
+Combining table recreation and population into a single, declarative Statement expression reduces BigQuery orchestration metadata overhead.
+
+1. Data Pipeline Architecture & Strategy
+Question: Why did you use CREATE OR REPLACE TABLE (CTAS) instead of a traditional TRUNCATE followed by an INSERT statement?
+The Answer: Using TRUNCATE and INSERT is a multi-step process that creates a "data vacuum" window where the table is completely empty. If the subsequent INSERT fails due to data type mismatches or network drops, downstream dashboards and applications break.CREATE OR REPLACE TABLE in BigQuery is an atomic transaction. The query compiler processes the entire selection block first. If it succeeds, it instantly swaps the pointer to the new data with zero downtime. If it fails, the old data stays 100% active and untouched, preventing pipeline outages.
+Question: Under what circumstances would you use a Full-Load pattern like this instead of an incremental Upsert (MERGE) strategy?
+The Answer: Full-loads are ideal for low-volume master reference tables (often called dimensions or lookups), such as a departments or facilities list. Because the dataset contains only a few dozen or hundreds of rows, the computational cost of completely overwriting the table is negligible.Additionally, it simplifies the pipeline logic by automatically handling upstream hard deletes without needing to write a complex delete detection tracking system.
+2. BigQuery Mechanics & Optimization
+Question: Why did you choose to CLUSTER BY columns on this reference table instead of applying a PARTITION BY strategy?
+The Answer: Partitioning is designed for large tables containing millions of records grouped by date or integer ranges. Since a departments table is very small, partitioning would create too many tiny shards, hurting performance and increasing metadata overhead.Instead, CLUSTER BY Dept_Id, datasource physically co-locates rows with the same IDs next to each other. When large transactional fact tables (like claims) execute a join against this master dimension table, BigQuery runs highly optimized, co-located joins with minimal slot-hour consumption.
+Question: Why did you wrap the source tables in a Common Table Expression (CTE) inside the table creation block instead of creating a staging table?
+The Answer: In BigQuery, creating intermediate physical staging tables incurs extra storage I/O, cost, and orchestration complexity.By using memory-bound inline CTEs (combined_source and cleaned_source), the entire execution takes place entirely within BigQuery’s ephemeral shuffle memory layer, which optimizes performance and lowers runtime processing costs.
+3. Data Governance & Health Metrics
+Question: What is the business purpose of the is_quarantined column in this context, and why did you keep bad records in the table?
+The Answer: The is_quarantined flag implements a non-breaking defensive data pattern. If a row has a missing primary key (DeptID IS NULL) or missing data (Name IS NULL), a hard rejection would crash the ingestion pipeline or cause complete loss of data visibility.By setting is_quarantined = TRUE, we isolate the corrupted data from downstream business users via standard filters (WHERE is_quarantined = FALSE), while allowing data engineers to monitor the pipeline health using simple audit queries.
+💡 Interview Pro-TipWhen discussing this query, use phrases like "Atomic Table Overwrite" and "Zero-Downtime Pipeline Design." This signals to an interviewer that you care about data reliability and operations, and that you do not just write queries that work when things go right, but queries that protect data when things go wrong.

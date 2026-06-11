@@ -1,0 +1,349 @@
+HospitalA
+---------
+PatientID		FirstName  LastName  MiddleName	SSN				PhoneNumber			Gender	DOB			Address										ModifiedDate	datasource
+HOSP1-000001	Rick	   Russo     U			188-23-9828		+1-630-829-7585		Female	04-06-1937	Unit 0915 Box 7064, DPO AA 82777			25-05-2020		HospitalA
+HOSP1-000002	Gregory	   Graham    B			730-45-8217		522-501-5461		Female	10-06-1937	9864 Gibson Islands, Danielside, KY 99809	05-06-2021		HospitalA
+
+HospitalB
+---------
+ID				F_Name		L_Name	M_Name	SSN			PhoneNumber		Gender	DOB			Address													Updated_Date	datasource
+HOSP1-000001	Victoria	Gamble	Q		318-87-5123	4902994299		Male	24-12-1994	7912 Arthur Loaf Apt. 907, Julieville, AK 38866			19-06-2021		HospitalB
+HOSP1-000002	Meghan		West	F		110-08-3049	(703)210-5078	Female	03-04-2009	70600 Destiny Grove Suite 946, Amberside, IL 27802		06-07-2024		HospitalB
+
+Get the overview:
+-----------------
+BRONZE				combine_tables		quality_checks			SILVER
+------				-------------		--------------			------
+									 ++ Patient_Key				Patient_Key
+PatientID		-->	SRC_PatientID		SRC_PatientID			SRC_PatientID
+FirstName  			FirstName			FirstName				FirstName
+LastName  			LastName			LastName				LastName
+MiddleName			MiddleName			MiddleName				MiddleName
+SSN					SSN					SSN						SSN
+PhoneNumber			PhoneNumber			PhoneNumber				PhoneNumber
+Gender				Gender				Gender					Gender
+DOB					DOB					DOB						DOB
+Address				Address				Address					Address				
+ModifiedDate	-->	SRC_ModifiedDate	SRC_ModifiedDate		SRC_ModifiedDate
+				 ++	datasource			datasource				datasource
+				 ++ is_quaratined		is_quaratined			is_quaratined
+															 ++ inserted_date			
+															 ++ modified_date
+															 ++ is_current
+Create silver table
+--------------------														 
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.silver_dataset.patients`(
+	Patient_Key			STRING,
+    SRC_PatientID       STRING,
+    FirstName           STRING,
+    LastName            STRING,
+    MiddleName          STRING,
+    SSN                 STRING,
+    PhoneNumber         STRING,
+    Gender              STRING,
+    DOB                 DATE,
+    Address			    STRING,
+    SRC_ModifiedDate    DATE,
+    datasource          STRING,
+    is_quaratined       BOOL,
+    inserted_date	    TIMESTAMP,
+    modified_date       TIMESTAMP,
+    is_current          BOOL
+)
+PARTITION BY (inserted_date)
+CLUSTER BY SRC_PatientID;	
+#Clustering Drop: Removed inserted_date from the CLUSTER BY clause. Since the table is already partitioned by inserted_date, including it in clustering is 
+redundant and wastes slot resources. Kept SRC_PatientID for localized searches.										 
+															 
+Create temporary tables combine_tables & quality_checks
+------------------------------------------------------
+WITH combine_tables AS (), quality_checks AS ()
+
+WITH combine_tables AS (
+	SELECT PatientID AS SRC_PatientID,
+	FirstName,
+	LastName,
+	MiddleName,
+	SSN,
+	PhoneNumber,
+	Gender,
+	PARSE_DATE('%d-%m-%Y',DOB) AS DOB,
+	Address,
+	PARSE_DATE('%d-%m-%Y',ModifiedDate) AS SRC_ModifiedDate,
+	'HospitalA' AS datasource,
+	(PatientID IS NULL OR FirstName IS NULL OR lower(FirstName) = 'null' OR DOB IS NULL) AS is_quaratined
+	FROM `avd-databricks-demo.bronze_dataset.patients_ha`
+	
+	UNION ALL 
+	
+	SELECT ID AS SRC_PatientID,
+	F_Name AS FirstName,
+	L_Name AS LastName,
+	M_Name AS MiddleName,
+	SSN,
+	PhoneNumber,
+	Gender,
+	PARSE_DATE('%d-%m-%Y',DOB) AS DOB,
+	Address,
+	PARSE_DATE('%d-%m-%Y',Updated_Date) AS SRC_ModifiedDate,
+	'HospitalB' AS datasource,
+	(ID IS NULL OR F_Name IS NULL OR lower(F_Name) = 'null' OR DOB IS NULL) AS is_quaratined
+	FROM `avd-databricks-demo.bronze_dataset.patients_hb`
+	),
+	
+	quality_checks AS (
+	SELECT CONCAT (SRC_PatientID,'-',datasource) AS Patient_Key,
+	SRC_PatientID,
+	FirstName,
+	LastName,
+	MiddleName,
+	SSN,
+	PhoneNumber,
+	Gender,
+	DOB,
+	Address,
+	SRC_ModifiedDate,
+	datasource,
+	is_quaratined
+	FROM combine_tables
+	)
+
+Creating staging table
+---------------------
+	SELECT Patient_Key AS Merge_Key,
+	source.Patient_Key,
+	source.SRC_PatientID,
+	source.FirstName,
+	source.LastName,
+	source.MiddleName,
+	source.SSN,
+	source.PhoneNumber,
+	source.Gender,
+	source.DOB,
+	source.Address,
+	source.SRC_ModifiedDate,
+	source.datasource,
+	source.is_quaratined
+	FROM quality_checks
+	
+	UNION ALL
+	
+	SELECT 
+	NULL as Merge_Key,
+	source.Patient_Key,
+	source.SRC_PatientID,
+	source.FirstName,
+	source.LastName,
+	source.MiddleName,
+	source.SSN,
+	source.PhoneNumber,
+	source.Gender,
+	source.DOB,
+	source.Address,
+	source.SRC_ModifiedDate,
+	source.datasource,
+	source.is_quaratined
+	
+	FROM quality_checks AS source
+	JOIN `avd-databricks-demo.silver_dataset.patients` AS target
+	ON target.Patient_Key = source.Patient_Key AND target.is_current = TRUE
+	WHERE FARM_FINGERPRINT(TO_JASON_STRING(STRUCT(
+		target.SRC_PatientID,
+		target.FirstName,
+		target.LastName,
+		target.MiddleName,
+		target.SSN,
+		target.PhoneNumber,
+		target.Gender,
+		target.DOB,
+		target.Address,
+		target.SRC_ModifiedDate,
+		target.datasource,
+		target.is_quaratined)))
+		!=
+		FARM_FINGERPRINT(TO_JASON_STRING(STRUCT(
+		source.SRC_PatientID,
+		source.FirstName,
+		source.LastName,
+		source.MiddleName,
+		source.SSN,
+		source.PhoneNumber,
+		source.Gender,
+		source.DOB,
+		source.Address,
+		source.SRC_ModifiedDate,
+		source.datasource,
+		source.is_quaratined)))
+
+
+Now put all this under USING() and name it AS staging:
+------------------------------------------------------
+MERGE INTO `avd-databricks-demo.silver_dataset.patients` AS target
+USING ( ) AS staging
+ON target.Merge_Key = staging.Merge_Key AND target.is_current = TRUE
+WHWN MATCHED THEN UPDATE SET target.is_current = FLASE, target.inserted_date = CURRENT_TIMESTAMP()
+WHEN NOT MATCHED THEN INSERT (target columns) VALUES (staging values,CURRENT_TIMESTAMP(),CURRENT_TIMESTAMP(),TRUE)
+
+
+Implementation:
+---------------
+MERGE INTO `avd-databricks-demo.silver_dataset.patients` AS target
+USING (
+	WITH combine_tables AS (
+	SELECT PatientID AS SRC_PatientID,
+	FirstName,
+	LastName,
+	MiddleName,
+	SSN,
+	PhoneNumber,
+	Gender,
+	PARSE_DATE('%d-%m-%Y',DOB) AS DOB,
+	Address,
+	PARSE_DATE('%d-%m-%Y',ModifiedDate) AS SRC_ModifiedDate,
+	'HospitalA' AS datasource,
+	(PatientID IS NULL OR FirstName IS NULL OR lower(FirstName) = 'null' OR DOB IS NULL) AS is_quaratined
+	FROM `avd-databricks-demo.bronze_dataset.patients_ha`
+	
+	UNION ALL 
+	
+	SELECT ID AS SRC_PatientID,
+	F_Name AS FirstName,
+	L_Name AS LastName,
+	M_Name AS MiddleName,
+	SSN,
+	PhoneNumber,
+	Gender,
+	PARSE_DATE('%d-%m-%Y',DOB) AS DOB,
+	Address,
+	PARSE_DATE('%d-%m-%Y',Updated_Date) AS SRC_ModifiedDate,
+	'HospitalB' AS datasource,
+	(ID IS NULL OR F_Name IS NULL OR lower(F_Name) = 'null' OR DOB IS NULL) AS is_quaratined
+	FROM `avd-databricks-demo.bronze_dataset.patients_hb`
+	),
+	
+	quality_checks AS (
+	SELECT CONCAT (SRC_PatientID,'-',datasource) AS Patient_Key,
+	SRC_PatientID,
+	FirstName,
+	LastName,
+	MiddleName,
+	SSN,
+	PhoneNumber,
+	Gender,
+	DOB,
+	Address,
+	SRC_ModifiedDate,
+	datasource,
+	is_quaratined
+	FROM combine_tables
+	)
+	-- Sub-query 1: Rows destined to insert as brand NEW records or overwrite completely new keys	
+	SELECT Patient_Key AS Merge_Key,
+	source.Patient_Key,
+	source.SRC_PatientID,
+	source.FirstName,
+	source.LastName,
+	source.MiddleName,
+	source.SSN,
+	source.PhoneNumber,
+	source.Gender,
+	source.DOB,
+	source.Address,
+	source.SRC_ModifiedDate,
+	source.datasource,
+	source.is_quaratined
+	FROM quality_checks
+	
+	UNION ALL
+	-- Sub-query 2: Rows destined to expire the historical record (forces a MATCH block invocation)
+	SELECT 
+	NULL as Merge_Key,
+	source.Patient_Key,
+	source.SRC_PatientID,
+	source.FirstName,
+	source.LastName,
+	source.MiddleName,
+	source.SSN,
+	source.PhoneNumber,
+	source.Gender,
+	source.DOB,
+	source.Address,
+	source.SRC_ModifiedDate,
+	source.datasource,
+	source.is_quaratined
+	
+	FROM quality_checks AS source
+	JOIN `avd-databricks-demo.silver_dataset.patients` AS target
+	ON target.Patient_Key = source.Patient_Key AND target.is_current = TRUE
+	WHERE FARM_FINGERPRINT(TO_JASON_STRING(STRUCT(
+		target.SRC_PatientID,
+		target.FirstName,
+		target.LastName,
+		target.MiddleName,
+		target.SSN,
+		target.PhoneNumber,
+		target.Gender,
+		target.DOB,
+		target.Address,
+		target.SRC_ModifiedDate,
+		target.datasource,
+		target.is_quaratined)))
+		!=
+		FARM_FINGERPRINT(TO_JASON_STRING(STRUCT(
+		source.SRC_PatientID,
+		source.FirstName,
+		source.LastName,
+		source.MiddleName,
+		source.SSN,
+		source.PhoneNumber,
+		source.Gender,
+		source.DOB,
+		source.Address,
+		source.SRC_ModifiedDate,
+		source.datasource,
+		source.is_quaratined)))
+		) AS staging
+	
+	ON target.Patient_Key = staging.Merge_Key AND target.is_current = TRUE
+	
+	-- When Merge_Key matches, it means a change occurred: close out the active record.
+	WHWN MATCHED THEN UPDATE SET target.is_current = FALSE, target.modified_date = CURRENT_TIMESTAMP()
+	
+	-- When Merge_Key is NULL (from Sub-query 2) or doesn't exist, insert the fresh version.
+	WHEN NOT MATCHED THEN INSERT (
+		Patient_Key,
+	    SRC_PatientID
+	    FirstName,
+	    LastName,
+	    MiddleName,
+	    SSN,
+	    PhoneNumber,
+	    Gender,
+	    DOB,
+	    Address,
+	    SRC_ModifiedDate,
+	    datasource,
+	    is_quaratined,
+	    inserted_date,
+	    modified_date,
+	    is_current
+		) 
+		VALUES (
+		staging.Patient_Key,
+	    staging.SRC_PatientID,
+	    staging.FirstName,
+	    staging.LastName,
+	    staging.MiddleName,
+	    staging.SSN,
+	    staging.PhoneNumber,
+	    staging.Gender,
+	    staging.DOB,
+	    staging.Address,
+	    staging.SRC_ModifiedDate,
+	    staging.datasource,
+	    staging.is_quaratined,
+		CURRENT_TIMESTAMP(),
+		CURRENT_TIMESTAMP(),
+		TRUE
+	);
+	

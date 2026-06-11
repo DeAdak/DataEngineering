@@ -1,0 +1,496 @@
+avd-databricks-demo.bronze_dataset.claims
+-----------------------------------------
+ClaimID		TransactionID	PatientID		EncounterID	ProviderID	DeptID	ServiceDate	ClaimDate	PayorID				ClaimAmount	PaidAmount	ClaimStatus	PayorType	Deductible	
+CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		Pending		Self-pay	279.32		
+CLAIM000002	TRANS004722		HOSP1-000299	ENC001313	PROV0260	DEPT002	21-05-2024	10-05-2024	BlueCross			3871.53		3028.71		Approved	Private		250.16		
+CLAIM000001	TRANS001819		HOSP1-001494	ENC001805	PROV0242	DEPT007	26-08-2024	05-10-2024	UnitedHealthcare	4600.39		3228.9		Approved	Government	101.31
+CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		Paid		Private		125.13
+
+Coinsurance	Copay	InsertDate	ModifiedDate	datasource
+170.77		13.01	15-06-2022	03-03-2024		HospitalA
+100.11		11.37	13-11-2023	15-05-2023		HospitalA
+99.56		45.99	13-01-2023	10-01-2020		HospitalB
+96.39		30.87	03-10-2024	08-02-2023		HospitalB
+
+avd-databricks-demo.silver_dataset.claims
+-----------------------------------------
+Claim_Key				SRC_ClaimID	TransactionID	PatientID		EncounterID	ProviderID	DeptID	ServiceDate	ClaimDate	PayorID				ClaimAmount	PaidAmount	
+CLAIM000001-HospitalA 	CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		
+CLAIM000002-HospitalA 	CLAIM000002	TRANS004722		HOSP1-000299	ENC001313	PROV0260	DEPT002	21-05-2024	10-05-2024	BlueCross			3871.53		3028.71		
+CLAIM000001-HospitalB 	CLAIM000001	TRANS001819		HOSP1-001494	ENC001805	PROV0242	DEPT007	26-08-2024	05-10-2024	UnitedHealthcare	4600.39		3228.9		
+CLAIM000002-HospitalB 	CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		
+
+
+ClaimStatus	PayorType	Deductible	Coinsurance	Copay	SRC_InsertDate	SRC_ModifiedDate	datasource	is_qurantined	modified_date	inserted_date	is_current
+Pending		Self-pay	279.32		170.77		13.01	15-06-2022		03-03-2024			HospitalA	FALSE			
+Approved	Private		250.16		100.11		11.37	13-11-2023		15-05-2023			HospitalA	FALSE
+Approved	Government	101.31		99.56		45.99	13-01-2023		10-01-2020			HospitalB	FALSE
+Paid		Private		125.13		96.39		30.87	03-10-2024		08-02-2023			HospitalB	FALSE
+
+###----------------------------------###
+CREATE TABLE IF NOT EXISTS `avd-bq-demo.silver_dataset.claims`(
+	Claim_Key 			STRING,				
+	SRC_ClaimID		    STRING,
+	TransactionID	    STRING,
+	PatientID		    STRING,
+	EncounterID	        STRING,
+	ProviderID	        STRING,
+	DeptID	            STRING,
+	ServiceDate	        DATE,
+	ClaimDate	        DATE,
+	PayorID				STRING,
+	ClaimAmount	        NUMERIC,
+	PaidAmount	        NUMERIC,
+	ClaimStatus	        STRING,
+	PayorType	        STRING,
+	Deductible	        NUMERIC,
+	Coinsurance	        NUMERIC,
+	Copay	            NUMERIC,
+	SRC_InsertDate	    DATE,
+	SRC_ModifiedDate	DATE,
+	datasource	        STRING,
+	is_quarantined	    BOOL,
+	insert_date	        DATE,
+	modified_date       DATE,
+	is_current          BOOL
+	)
+-- Cost Reduction Strategy: Eliminates slow full-table scans during the MERGE operation
+	PARTITION BY DATE(insert_date)
+	CLUSTER BY Claim_Key, is_current;
+
+
+###----------------------------------###
+
+# You must explicitly parse string dates using PARSE_DATE('%d-%m-%Y', column) and cast metrics using SAFE_CAST(column AS NUMERIC) 
+inside the staging table step.
+# CAST crashes your query with an error if it encounters a bad value, 
+while SAFE_CAST returns NULL and allows the query to keep running.
+# Don't physically creating and drop a persistent table (quality_checks) just to pass data to the merge. In production, 
+this adds unnecessary disk I/O costs. It is highly optimized to run this inside a temporary Common Table Expression 
+(WITH clause) or a BigQuery TEMP TABLE.
+# FARM_FINGERPRINT(TO_JSON_STRING(STRUCT(...))) handles NULL values perfectly. It is completely null-safe and will not crash, 
+throw an error, or skip your data rows if a field contains a NULL.
+#Removed Inner DISTINCT *: Running DISTINCT * inside the subquery forces BigQuery to sort and deduplicate every single column 
+twice (once for each table) before stacking them. This consumes a massive amount of slot time.
+#Remove CASE, Because IS NULL and = operators naturally return a boolean result (TRUE or FALSE), you can simply wrap the logic in parentheses:
+#Partition Expression Fix: PARTITION BY inserted_date fails if inserted_date is a TIMESTAMP type column. I wrapped it in DATE(inserted_date) so BigQuery can organize your physical data directories perfectly.
+#In BigQuery, wrapping a column in the DATE() function during partition definition is required whenever your column is a TIMESTAMP or DATETIME data type.
+
+#In data engineering—especially when moving data from a raw Bronze layer to a cleaned Silver layer—a quarantine strategy is 
+used to handle corrupted, incomplete, or invalid data without breaking your data pipeline.Instead of letting bad data crash 
+your pipeline or pollute your clean business tables, you flag it, isolate it, and keep the system moving.Here is exactly why 
+quarantine is a critical design pattern:1. Prevents Pipeline FailuresIf you try to process an invalid date (like 31-02-2025) 
+or a missing critical key through strict business logic or aggregations later in your pipeline, your production jobs will fail. 
+Quarantine acts as a safety net that catches these errors gracefully.2. Protects Data Integrity (Downstream Systems)Data in the
+ Silver and Gold layers is directly consumed by business analysts, machine learning models, and executive dashboards. If bad 
+ data gets through, it leads to:Inaccurate metrics (e.g., calculation errors because a crucial financial or medical field was 
+ NULL).Broken joins (e.g., missing Patient IDs preventing cross-referencing with medication tables).3. Enables Data Governance 
+ & AuditingInstead of simply deleting or dropping bad records (which loses information and creates data gaps), quarantine 
+ preserves them. Data quality teams can easily run queries to see what went wrong, why it failed, and which upstream source 
+ system sent the bad data.4. Simplifies Re-processing (Reprocessing Loop)Once the engineering team or the source provider 
+ (like Hospital A or Hospital B) fixes the root cause of the bad records, you can easily filter your data lake for 
+ is_quarantined = TRUE, fix the values, and re-run them into the clean Silver layer without reprocessing millions of good 
+ records.🛠️ How it applies to your specific Patient PipelineIn your code, you defined the quarantine rule 
+ as:sql(PatientID IS NULL OR FirstName IS NULL OR LOWER(FirstName) = 'null' OR DOB IS NULL) AS is_quarantined
+Use code with caution.Because this is medical data, a patient record is completely useless and dangerous if it does not have 
+a unique identifier (PatientID), a name (FirstName), or a birth date (DOB).Without Quarantine: If a record from Hospital B 
+arrives with a missing name, your SCD Type 2 MERGE statement will still insert it as an active patient (is_current = TRUE), 
+corrupting your master patient directory.With Quarantine: The record is flagged. In a production architecture, you would 
+ideally route these flagged records to a separate table called silver_dataset.patients_quarantine so data stewards can 
+contact the hospital to fix the missing details.
+
+
+After UNION ALL
+---------------
+Merge_Key				Claim_Key				SRC_ClaimID	TransactionID	PatientID		EncounterID	ProviderID	DeptID	ServiceDate	ClaimDate	PayorID				ClaimAmount	PaidAmount	
+CLAIM000001-HospitalA 	CLAIM000001-HospitalA 	CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		
+CLAIM000002-HospitalA 	CLAIM000002-HospitalA 	CLAIM000002	TRANS004722		HOSP1-000299	ENC001313	PROV0260	DEPT002	21-05-2024	10-05-2024	BlueCross			3871.53		3028.71		
+CLAIM000001-HospitalB 	CLAIM000001-HospitalB 	CLAIM000001	TRANS001819		HOSP1-001494	ENC001805	PROV0242	DEPT007	26-08-2024	05-10-2024	UnitedHealthcare	4600.39		3228.9		
+CLAIM000002-HospitalB 	CLAIM000002-HospitalB 	CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		
+NULL 					CLAIM000001-HospitalA 	CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		
+NULL 					CLAIM000002-HospitalB 	CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		
+
+
+ClaimStatus	PayorType	Deductible	Coinsurance	Copay	SRC_InsertDate	SRC_ModifiedDate	datasource	is_qurantined	modified_date	inserted_date	is_current
+Pending		Self-pay	279.32		170.77		13.01	15-06-2022		03-03-2024			HospitalA	FALSE			
+Approved	Private		250.16		100.11		11.37	13-11-2023		15-05-2023			HospitalA	FALSE
+Approved	Government	101.31		99.56		45.99	13-01-2023		10-01-2020			HospitalB	FALSE
+Paid		Private		125.13		96.39		30.87	03-10-2024		08-02-2023			HospitalB	FALSE
+Pending		Self-pay	279.32		170.77		13.01	15-06-2022		03-03-2024			HospitalA	FALSE			
+Paid		Private		125.13		96.39		30.87	03-10-2024		08-02-2023			HospitalB	FALSE
+
+
+###----------------------------------###
+MERGE INTO `avd-bq-demo.silver_dataset.claims` AS target
+USING (
+	WITH check_quality AS (
+	SELECT
+		CONCAT(ClaimID,'-',datasource) AS Claim_Key,		
+		ClaimID AS SRC_ClaimID,	     
+		TransactionID,	 
+		PatientID,		 
+		EncounterID,	     
+		ProviderID,	     
+		DeptID,	         
+		PARSE_DATE('%d-%m-%Y',ServiceDate) AS ServiceDate,   
+		PARSE_DATE('%d-%m-%Y',ClaimDate) AS ClaimDate,	     
+		PayorID,			
+		SAFE_CAST(ClaimAmount AS NUMERIC) AS ClaimAmount,  
+		SAFE_CAST(PaidAmount	 AS NUMERIC) AS PaidAmount,
+		ClaimStatus,	     
+		PayorType,	     
+		SAFE_CAST(Deductible AS NUMERIC) AS Deductible,   
+		SAFE_CAST(Coinsurance AS NUMERIC) AS Coinsurance,
+		SAFE_CAST(Copay	AS NUMERIC) AS Copay,
+		PARSE_DATE('%d-%m-%Y',InsertDate) AS SRC_InsertDate,
+		PARSE_DATE('%d-%m-%Y',ModifiedDate) AS SRC_ModifiedDate,
+		datasource,	     
+		(ClaimID IS NULL OR PatientID IS NULL OR TransactionID IS NULL OR LOWER(ClaimStatus) = 'null') AS is_quarantined	 
+	FROM `avd-bq-demo.bronze_dataset.claims`
+	)
+
+	SELECT source.Claim_Key AS Merge_Key, source.* FROM check_quality AS source
+	UNION ALL
+	SELECT NULL AS Merge_Key, source.* FROM check_quality AS source
+	JOIN `avd-bq-demo.silver_dataset.claims` AS target
+	ON source.Claim_Key = target.Claim_Key AND target.is_current = TRUE
+	WHERE FARM_FINGERPRINT(TO_JSON_STRING(STRUCT(
+		source.SRC_ClaimID		,
+		source.TransactionID	,
+		source.PatientID		,
+		source.EncounterID	    ,
+		source.ProviderID	    ,
+		source.DeptID	        ,
+		source.ServiceDate	    ,
+		source.ClaimDate	    ,
+		source.PayorID			,
+		source.ClaimAmount	    ,
+		source.PaidAmount	    ,
+		source.ClaimStatus	    ,
+		source.PayorType	    ,
+		source.Deductible	    ,
+		source.Coinsurance	    ,
+		source.Copay	        ,
+		source.SRC_InsertDate	,
+		source.SRC_ModifiedDate ,
+		source.datasource	    ,
+		source.is_quarantined	    
+	))) != FARM_FINGERPRINT(TO_JSON_STRING(STRUCT(
+	    target.SRC_ClaimID		,
+	    target.TransactionID	,
+	    target.PatientID		,
+	    target.EncounterID	    ,
+	    target.ProviderID	    ,
+	    target.DeptID	        ,
+	    target.ServiceDate	    ,
+	    target.ClaimDate	    ,
+	    target.PayorID			,
+	    target.ClaimAmount	    ,
+	    target.PaidAmount	    ,
+	    target.ClaimStatus	    ,
+	    target.PayorType	    ,
+	    target.Deductible	    ,
+	    target.Coinsurance	    ,
+	    target.Copay	        ,
+	    target.SRC_InsertDate	,
+	    target.SRC_ModifiedDate ,
+	    target.datasource	    ,
+	    target.is_quarantined
+	)))
+) AS staging
+
+ON target.Claim_Key = staging.Merge_Key AND target.is_current = TRUE
+WHEN MATCHED THEN UPDATE
+	SET target.is_current = FALSE,
+	target.modified_date = CURRENT_TIMESTAMP()
+
+WHEN NOT MATCHED THEN INSERT (
+	Claim_Key 			,
+    SRC_ClaimID		    ,
+    TransactionID	    ,
+    PatientID		    ,
+    EncounterID	        ,
+    ProviderID	        ,
+    DeptID	            ,
+    ServiceDate	        ,
+    ClaimDate	        ,
+    PayorID				,
+    ClaimAmount	        ,
+    PaidAmount	        ,
+    ClaimStatus	        ,
+    PayorType	        ,
+    Deductible	        ,
+    Coinsurance	        ,
+    Copay	            ,
+    SRC_InsertDate	    ,
+    SRC_ModifiedDate	,
+    datasource	        ,
+    is_quarantined	    ,
+    insert_date	        ,
+    modified_date       ,
+    is_current  
+		)
+VALUES (
+	staging.Claim_Key 		,	
+	staging.SRC_ClaimID	    ,    
+	staging.TransactionID	,
+	staging.PatientID		,
+	staging.EncounterID	    ,    
+	staging.ProviderID	    ,    
+	staging.DeptID	        ,    
+	staging.ServiceDate	    ,    
+	staging.ClaimDate	    ,
+	staging.PayorID			,	
+	staging.ClaimAmount	    ,    
+	staging.PaidAmount	    ,    
+	staging.ClaimStatus	    ,    
+	staging.PayorType	    ,
+	staging.Deductible	    ,    
+	staging.Coinsurance	    ,    
+	staging.Copay	        ,
+	staging.SRC_InsertDate	,    
+	staging.SRC_ModifiedDate,
+	staging.datasource	    ,    
+	staging.is_quarantined	,    
+	CURRENT_DATE()	    ,    
+	CURRENT_DATE()	    ,    
+	TRUE
+	);       
+
+Interview Questions
+-------------------
+This code is a goldmine for data engineering interview questions because it covers advanced, real-world data warehousing concepts rather than basic textbook syntax.
+Here are the top interview questions you are highly likely to face based on this specific BigQuery script, categorized by complexity.
+------------------------------
+## 1. Architecture & Design Patterns
+## Question: Why did you use a UNION ALL with a NULL AS Merge_Key inside the USING clause? Why not a standard MERGE?
+
+* The Answer: A standard MERGE statement can only execute a single clause per row. If a record matches on the primary key, it can only trigger the WHEN MATCHED update block to expire the old record. It cannot simultaneously insert the new, modified version of that record.
+* By duplicating the changed records in a secondary virtual stream (UNION ALL) and masking their keys as NULL, we force BigQuery to treat them as unmatched rows, successfully driving both the historical update and the fresh record insertion in a single pass.
+
+## Question: How do you handle Slowly Changing Dimensions (SCD) Type 2 in BigQuery? What are the tracking columns you look for?
+
+* The Answer: We track records using an operational flag (is_current) combined with temporal audit points (insert_date and modified_date). In an ideal scenario, enterprise tables use explicit point-in-time intervals like start_timestamp and end_timestamp (defaulted to a maximum high-water mark like 9999-12-31) to let downstream Business Intelligence tools run historical time-travel queries smoothly.
+
+------------------------------
+## 2. BigQuery Engine Optimization & Performance
+## Question: Why did you choose FARM_FINGERPRINT and TO_JSON_STRING for change detection instead of explicit inequality chains (source.col != target.col)?
+
+* The Answer: This is a performance optimization. Chaining 20+ columns using OR statements requires the BigQuery query planner to evaluate multiple logical expression pathways for every single row.
+* Instead, TO_JSON_STRING(STRUCT(...)) bundles the entire row state into a single text block, and FARM_FINGERPRINT hashes it into a compact 64-bit integer. Comparing two integers is significantly faster for the slot execution engine, which lowers CPU strain and minimizes query compute bills.
+* You are using the inequality operator (<>). In SQL, if any column contains a NULL value, source.column <> target.column evaluates to UNKNOWN (not TRUE). The match will fail to trigger an update even if data has changed.
+
+## Question: Is FARM_FINGERPRINT(TO_JSON_STRING(STRUCT(...))) null-safe? What happens if one of the fields in your payload is NULL?
+
+* The Answer: Yes, it is completely null-safe. The STRUCT layer securely holds missing data states, and TO_JSON_STRING explicitly converts a missing field into a literal "FieldName":null string token. Because the null characters form part of the final text string, the hashing function handles it perfectly without throwing compilation errors or breaking inequality checks.
+
+## Question: Why did you partition by insert_date and cluster by Claim_Key and is_current on the Silver table?
+
+* The Answer: Partitioning divides the physical storage by time boundaries, allowing BigQuery to prune partitions and avoid full-table scans. Clustering sorts the rows within those partitions based on frequently joined lookup keys.
+* During a MERGE operation, this setup allows BigQuery to pinpoint the exact blocks where is_current = TRUE rows reside, drastically cutting down the volume of bytes processed and accelerating join speeds.
+
+------------------------------
+## 3. Data Governance & Defensive Quality Controls
+## Question: What is the difference between CAST and SAFE_CAST? Why is SAFE_CAST crucial in a Silver layer loader?
+
+* The Answer: Standard CAST throws a runtime failure and crashes the entire execution pipeline if it runs into dirty data (e.g., trying to turn text like 'REJECTED' into a number).
+* SAFE_CAST is defensive. If conversion fails, it quietly returns a NULL value instead of crashing. This prevents a single invalid source row from bringing down the entire corporate data ingestion pipeline.
+
+## Question: What is a Quarantine pattern in data engineering, and how did you implement it here?
+
+* The Answer: A quarantine pattern isolates dirty, malformed, or broken records without halting the pipeline.
+* In this script, the CASE WHEN block checks for missing primary business attributes (ClaimID IS NULL, PatientID IS NULL) or explicit literal system string errors (LOWER(ClaimStatus) = 'null'). If caught, it sets is_quarantined = TRUE. This allows valid rows to flow cleanly to analytics tables while corrupted lines are kept out of active metrics but remain available for auditing.
+
+------------------------------
+## 💡 Interview Pro-Tip
+If asked about this script, frame it as a "Metadata-driven defensive pipeline pattern." Emphasize that your choices were made to optimize BigQuery compute budgets (using structural hashing, clustering, and partitioning) while ensuring system resilience (using SAFE_CAST and the Quarantine pattern).
+
+
+
+
+######################### IGNORE THIS PART ################################
+avd-databricks-demo.silver_dataset.quality_checks
+-------------------------------------------------
+Claim_Key				SRC_ClaimID	TransactionID	PatientID		EncounterID	ProviderID	DeptID	ServiceDate	ClaimDate	PayorID				ClaimAmount	PaidAmount	
+CLAIM000001-HospitalA 	CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		
+CLAIM000002-HospitalA 	CLAIM000002	TRANS004722		HOSP1-000299	ENC001313	PROV0260	DEPT002	21-05-2024	10-05-2024	BlueCross			3871.53		3028.71		
+CLAIM000001-HospitalB 	CLAIM000001	TRANS001819		HOSP1-001494	ENC001805	PROV0242	DEPT007	26-08-2024	05-10-2024	UnitedHealthcare	4600.39		3228.9		
+CLAIM000002-HospitalB 	CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		
+
+ClaimStatus	PayorType	Deductible	Coinsurance	Copay	SRC_InsertDate	SRC_ModifiedDate	datasource	is_qurantined
+Pending		Self-pay	279.32		170.77		13.01	15-06-2022		03-03-2024			HospitalA	FALSE
+Approved	Private		250.16		100.11		11.37	13-11-2023		15-05-2023			HospitalA	FALSE
+Approved	Government	101.31		99.56		45.99	13-01-2023		10-01-2020			HospitalB	FALSE
+Paid		Private		125.13		96.39		30.87	03-10-2024		08-02-2023			HospitalB	FALSE
+
+#You must explicitly parse string dates using PARSE_DATE('%d-%m-%Y', column) and cast metrics 
+using SAFE_CAST(column AS NUMERIC) inside the staging table step.
+# Fundamental rule in SQL: a single source row can only trigger one clause (WHEN MATCHED or WHEN NOT MATCHED) per target row. 
+It cannot trigger both.
+# You are physically creating and dropping a persistent table (quality_checks) just to pass data to the merge. 
+In production, this adds unnecessary disk I/O costs. It is highly optimized to run this inside a temporary 
+Common Table Expression (WITH clause) or a BigQuery TEMP TABLE.
+-------------
+CREATE OR REPLACE TABLE `avd-databricks-demo.silver_dataset.quality_checks` AS
+SELECT DISTINCT CONCAT(ClaimID,'-',datasource) as Claim_Key,
+				ClaimID AS SRC_ClaimID,
+				TransactionID,
+				PatientID,
+				EncounterID,
+				ProviderID,
+				DeptID,
+				ServiceDate,
+				ClaimDate,
+				PayorID,
+				ClaimAmount,
+				PaidAmount,
+				ClaimStatus,
+				PayorType,
+				Deductible,
+				Coinsurance,
+				Copay,
+				InsertDate AS SRC_InsertDate,
+				ModifiedDate AS SRC_ModifiedDate,
+				datasource,
+				CASE 
+					WHEN SRC_ClaimID IS NULL 
+						OR PatientID IS NULL 
+						OR TransactionID IS NULL 
+						OR LOWER(ClaimStatus) = 'null' 
+					THEN TRUE 
+					ELSE FALSE 
+				END AS is_qurantined
+FROM `avd-databricks-demo.bronze_dataset.claims`
+
+
+avd-databricks-demo.silver_dataset.claims
+---------
+Claim_Key				SRC_ClaimID	TransactionID	PatientID		EncounterID	ProviderID	DeptID	ServiceDate	ClaimDate	PayorID				ClaimAmount	PaidAmount	
+CLAIM000001-HospitalA 	CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		
+CLAIM000002-HospitalA 	CLAIM000002	TRANS004722		HOSP1-000299	ENC001313	PROV0260	DEPT002	21-05-2024	10-05-2024	BlueCross			3871.53		3028.71		
+CLAIM000001-HospitalB 	CLAIM000001	TRANS001819		HOSP1-001494	ENC001805	PROV0242	DEPT007	26-08-2024	05-10-2024	UnitedHealthcare	4600.39		3228.9		
+CLAIM000002-HospitalB 	CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		
+
+
+ClaimStatus	PayorType	Deductible	Coinsurance	Copay	SRC_InsertDate	SRC_ModifiedDate	datasource	is_qurantined	modified_date	inserted_date	is_current
+Pending		Self-pay	279.32		170.77		13.01	15-06-2022		03-03-2024			HospitalA	FALSE			
+Approved	Private		250.16		100.11		11.37	13-11-2023		15-05-2023			HospitalA	FALSE
+Approved	Government	101.31		99.56		45.99	13-01-2023		10-01-2020			HospitalB	FALSE
+Paid		Private		125.13		96.39		30.87	03-10-2024		08-02-2023			HospitalB	FALSE
+
+avd-databricks-demo.silver_dataset.claims
+------------------------------------------
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.silver_dataset.claims`(
+							Claim_Key		  STRING NOT NULL,
+                            SRC_ClaimID       STRING,
+                            TransactionID     STRING,
+                            PatientID         STRING,
+                            EncounterID       STRING,
+                            ProviderID        STRING,
+                            DeptID            STRING,
+                            ServiceDate       DATE,
+                            ClaimDate         DATE,
+                            PayorID           STRING,
+                            ClaimAmount       NUMERIC,
+                            PaidAmount        NUMERIC,
+                            ClaimStatus       STRING,
+                            PayorType         STRING,
+                            Deductible        NUMERIC,
+                            Coinsurance       NUMERIC,
+                            Copay             NUMERIC,
+                            SRC_InsertDate    DATE,
+                            SRC_ModifiedDate  DATE,
+                            datasource        STRING,
+							is_qurantined     BOOL,
+							inserted_date	  TIMESTAMP,
+							modified_date	  TIMESTAMP,
+							is_current		  BOOL
+							)
+-- Production Best Practice: Partition by ingestion date and cluster by lookup keys for ultra-fast merge performance
+PARTITION BT DATE(inserted_date)
+CLUSTER BY Claim_Key,is_current;
+
+			
+MERGE INTO `avd-databricks-demo.silver_dataset.claims` AS target
+USING `avd-databricks-demo.silver_dataset.quality_checks` AS source
+ON target.Claim_Key = source.Claim_Key AND target.is_current = TRUE
+WHEN MATCHED AND (		
+					source.SRC_ClaimID      <> target.SRC_ClaimID 		OR 
+					source.TransactionID    <> target.TransactionID 	OR 
+					source.PatientID        <> target.PatientID 		OR 
+					source.EncounterID      <> target.EncounterID 		OR 
+					source.ProviderID       <> target.ProviderID 		OR 
+					source.DeptID           <> target.DeptID 			OR 
+					source.ServiceDate      <> target.ServiceDate 		OR 
+					source.ClaimDate        <> target.ClaimDate 		OR 
+                    source.PayorID          <> target.PayorID 			OR 
+                    source.ClaimAmount      <> target.ClaimAmount 		OR 
+                    source.PaidAmount       <> target.PaidAmount 		OR 
+                    source.ClaimStatus      <> target.ClaimStatus 		OR 
+                    source.PayorType        <> target.PayorType 		OR 
+                    source.Deductible       <> target.Deductible 		OR 
+                    source.Coinsurance      <> target.Coinsurance 		OR 
+                    source.Copay            <> target.Copay 			OR 
+                    source.SRC_InsertDate   <> target.SRC_InsertDate 	OR 
+                    source.SRC_ModifiedDate <> target.SRC_ModifiedDate 	OR 
+                    source.datasource       <> target.datasource 		OR 
+                    source.is_qurantined    <> target.is_qurantined
+) THEN
+UPDATE SET 
+	target.is_current = FALSE,
+	target.modified_date = CURRENT_TIMESTAMP()
+
+WHEN NOT MATCHED THEN INSERT(
+							Claim_Key,		
+							SRC_ClaimID,     
+                            TransactionID,  
+                            PatientID,       
+                            EncounterID,     
+                            ProviderID,      
+                            DeptID,          
+                            ServiceDate,     
+                            ClaimDate,       
+                            PayorID,         
+                            ClaimAmount,     
+                            PaidAmount,      
+                            ClaimStatus,     
+                            PayorType,       
+                            Deductible,      
+                            Coinsurance,     
+                            Copay,           
+                            SRC_InsertDate,  
+                            SRC_ModifiedDate,
+                            datasource,      
+                            is_qurantined,   
+                            inserted_date,	
+                            modified_date,	
+                            is_current
+							)
+VALUES 						(
+							source.Claim_Key,		
+                            source.SRC_ClaimID,     
+                            source.TransactionID,   
+                            source.PatientID,       
+                            source.EncounterID,     
+                            source.ProviderID,      
+                            source.DeptID,          
+                            source.ServiceDate,     
+                            source.ClaimDate,       
+                            source.PayorID,         
+                            source.ClaimAmount,     
+                            source.PaidAmount,      
+                            source.ClaimStatus,     
+                            source.PayorType,       
+                            source.Deductible,      
+                            source.Coinsurance,     
+                            source.Copay,           
+                            source.SRC_InsertDate,  
+                            source.SRC_ModifiedDate,
+                            source.datasource,      
+                            source.is_qurantined,
+							CURRENT_TIMESTAMP(),
+							CURRENT_TIMESTAMP(),
+							TRUE
+);
+
+DROP TABLE `avd-databricks-demo.silver_dataset.quality_checks`;

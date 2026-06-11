@@ -1,0 +1,169 @@
+To execute PySpark .py files stored in a Google Cloud Storage (GCS) bucket, you will use the DataprocSubmitJobOperator. 
+This operator instructs Google Cloud Dataproc to pull your script directly from GCS and run it on a managed Spark cluster.
+
+Prerequisites
+Before deploying this DAG, ensure you have configured your environment:
+Airflow Connection: A Google Cloud connection configured in Airflow named google_cloud_default.
+Dataproc Cluster: An active Dataproc cluster running in your GCP project.
+File Paths: Your PySpark code must be uploaded to a bucket path (e.g., gs://your-bucket-name/scripts/my_spark_job.py).
+
+##----------------------------------------------------------------------------------------##
+0. Library Imports
+
+import airflow
+from airflow import DAG
+from datetime import timedelta,datetime
+from airflow.providers.google.cloud.operators.dataproc import (
+    DataprocStartClusterOperator,
+	DataprocSubmitJobOperator,
+    DataprocStopClusterOperator
+)
+
+# 1. Global Configurations
+
+PROJECT_ID = "avd-databricks-demo"
+REGION = "us-east1"
+CLUSTER_NAME = "my-demo-cluster"
+COMPOSER_BUCKET = "us-central1-demo-instance-a649b781-bucket"
+
+# Define path to your primary PySpark script and any helper files inside GCS
+
+hospitalALanding_URI = f'gs://{COMPOSER_BUCKET}/data/INGESTION/hospitalALanding.py"
+hospitalBLanding_URI = f'gs://{COMPOSER_BUCKET}/data/INGESTION/hospitalBLanding.py"
+claimsLanding_URI = f'gs://{COMPOSER_BUCKET}/data/INGESTION/claims.py"
+
+# 2. Default Task Configurations
+default_args = {
+    "owner": "DEBABRATA ADAK",
+	#The name of the engineer or team responsible for maintaining this DAG. This name shows up in the Airflow Web UI dashboard for easy filtering.
+    "start_date": datetime(2026, 1, 1),
+	#Airflow requires a fixed, concrete static date (like datetime(2026, 1, 1)) to initialize a DAG. Setting it to None causes a crash.
+    "depends_on_past": False,
+	#If set to False, a task run today does not care if yesterday's run succeeded or failed. It will execute anyway. If it were True, today’s task would freeze and wait for yesterday's run to complete successfully first.
+    "email_on_failure": False,
+	#Tells Airflow not to send an automated alert email if a task fails.
+    "email_on_retry": False,
+	#Tells Airflow not to send an automated alert email when a failed task attempts to run again.
+    "email": ["***@gmail.com"],
+	#The target email address list where Airflow system alerts are routed (though alerts are currently silenced by the False flags above).
+    "email_on_success": False,
+	#Tells Airflow not to send a "job successful" email when a task completes successfully.
+    "retries": 1,
+	#If a task crashes (e.g., a network blip or a Dataproc timeout), Airflow will automatically try to run it 1 more time before officially marking it as a "Failure".
+    "retry_delay": timedelta(minutes=5)
+	#The cooldown period. If a task crashes, Airflow will wait exactly 5 minutes before attempting the retry.
+}
+
+# 3. DAG Definition
+with DAG(
+    dag_id='gcs_pyspark_dataproc_pipeline', # Used in parent DAG
+	#The unique identification name of this pipeline. This name must be unique across your entire Airflow environment because the Web UI and parent DAGs use it to locate and trigger this script.
+    default_args=default_args,
+	#This links the dictionary of rules we explained in Part 1 to this DAG, ensuring all downstream tasks inherit those retry and ownership properties.
+	description='Submits a PySpark script from a GCS bucket to a Dataproc cluster',
+    #A helpful text summary displayed in the Airflow dashboard UI so other engineers know exactly what this pipeline does without reading the code.
+	schedule_interval=None, #Parent DAG will handle the scheduling.
+    #Setting it to None confirms it is a triggered pipeline that will sit dormant until a master parent DAG or an API call explicitly starts it.
+	start_date=datetime(2026, 1, 1),
+    #The global anchor date for the pipeline. Airflow cannot execute any pipeline runs for execution dates prior to this setting.
+	catchup=False,
+    #Tells Airflow to ignore the past. Since your start date is in the past, if this was set to True, Airflow would try to automatically trigger hundreds of historical backfill runs to "catch up" to the current date. Setting it to False prevents this safety hazard.
+	tags=['gcp', 'dataproc', 'pyspark'],
+	#Search labels displayed in the Airflow UI. They allow you to click a button and immediately find all pipelines interacting with GCP or PySpark.
+) as dag:
+
+# 4. Define the Dataproc PySpark Job Structural Payload
+
+hospitalALandingPYSPARK_JOB_1 = {
+    "reference": {"project_id": PROJECT_ID},
+    "placement": {"cluster_name": CLUSTER_NAME},
+    "pyspark_job": {"main_python_file_uri": hospitalALanding_URI}
+}
+
+hospitalBLandingPYSPARK_JOB_2 = {
+    "reference": {"project_id": PROJECT_ID},
+    "placement": {"cluster_name": CLUSTER_NAME},
+    "pyspark_job": {"main_python_file_uri": hospitalBLanding_URI}
+}
+
+claimsLandingPYSPARK_JOB_3 = {
+	"reference": {"project_id": PROJECT_ID},
+    "placement": {"cluster_name": CLUSTER_NAME},
+    "pyspark_job": {"main_python_file_uri": claimsLanding_URI}
+}
+
+# 5. Task Instantiation
+start_cluster = DataprocStartClusterOperator(
+	task_id = "start_cluster",
+	project_id = PROJECT_ID,
+	region = REGION,
+	cluster_name = CLUSTER_NAME
+)
+
+hospitalALanding = DataprocSubmitJobOperator(
+	task_id="hospitalALanding", 
+	job=hospitalALandingPYSPARK_JOB_1, 
+	region=REGION, 
+	project_id=PROJECT_ID
+)
+
+hospitalBLanding = DataprocSubmitJobOperator(
+	task_id="hospitalBLanding", 
+	job=hospitalALandingPYSPARK_JOB_2, 
+	region=REGION, 
+	project_id=PROJECT_ID
+)
+
+claimsLanding = DataprocSubmitJobOperator(
+	task_id="claimsLanding", 
+	job=claimsLandingPYSPARK_JOB_3, 
+	region=REGION, 
+	project_id=PROJECT_ID
+)
+
+stop_cluster = DataprocStopClusterOperator(
+	task_id = "stop_cluster",
+	project_id = PROJECT_ID,
+	region = REGION,
+	cluster_name = CLUSTER_NAME,
+	trigger_rule="all_done"
+	)
+
+# 6. Graph Topology
+start_cluster >> hospitalALanding >> hospitalBLanding >> claimsLanding >> stop_cluster
+
+or
+
+# 6. Parallel Execution Dependency Layout
+# Encloses parallel ingestion tasks within brackets to fork execution simultaneously
+start_cluster >> [hospitalALanding, hospitalBLanding, claimsLanding] >> stop_cluster
+
+
+Critical Cloud Cost Protection (trigger_rule="all_done"): 
+In your original script, if submit_hospital_b failed, the pipeline would halt immediately. Because the flow stopped, stop_cluster would never execute, leaving your Dataproc cluster running indefinitely and racking up massive Google Cloud bills. Adding "all_done" ensures that the cluster shuts down cleanly regardless of job status.
+
+Optimized Execution Window: Instead of waiting for HospitalA to finish before HospitalB starts, Dataproc schedules them all concurrently. If each script takes 10 minutes, your pipeline now finishes in roughly 10 minutes total instead of 30 minutes.
+
+Smart Resource Utilization: Dataproc handles distributed scaling naturally. Running jobs in parallel fully utilizes your cluster's CPU and memory capacity instead of letting slots sit idle.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

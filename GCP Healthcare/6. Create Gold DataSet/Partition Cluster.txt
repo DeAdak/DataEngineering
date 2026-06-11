@@ -1,0 +1,64 @@
+In Google BigQuery, Partitioning and Clustering are the two most powerful techniques used to optimize query performance and drastically reduce data scanning costs.
+Think of a massive library:
+Partitioning is like splitting books into completely different rooms based on publication year. If you only want books from 2026, you go straight to that room and ignore the rest of the building.
+Clustering is like sorting books inside each room alphabetically by the author's last name. Once you are in the 2026 room, you can jump straight to the "S" shelf instead of reading every book cover to cover.
+📅 1. Partitioning (The Big Divisions)Partitioning physically divides a large table into smaller segments called partitions based on a specific column (usually a DATE, TIMESTAMP, or an INTEGER).
+How it works: When you run a query filtering on the partition column, BigQuery only reads the relevant partition. This is called Partition Pruning.
+Best used for: High-cardinality time windows or dates (e.g., EncounterDate, TransactionDate).
+Example:
+Imagine your transactions table has 10 years of hospital billing data (100 million rows). You partition the table by VisitDate.
+
+CREATE TABLE `silver_dataset.transactions`(
+    Transaction_Key STRING,
+    PatientID STRING,
+    VisitDate DATE,
+    Amount NUMERIC
+)
+PARTITION BY VisitDate; -- 👈 BigQuery creates a separate bucket for every unique date
+
+
+The Performance Impact:
+If you run this query:
+	SELECT SUM(Amount) 
+	FROM `silver_dataset.transactions` 
+	WHERE VisitDate = '2026-06-11';
+
+Instead of scanning 100 million rows across 10 years, BigQuery only scans the rows belonging to June 11, 2026. If that partition only has 5,000 rows, your query cost drops from gigabytes to virtually free.
+
+
+🗂️ 2. Clustering (The Internal Sorting)
+Clustering organizes the data within each partition based on the contents of one or more columns (up to 4 columns). BigQuery sorts the rows and stores them in optimally sized storage blocks.
+How it works:
+Unlike partitioning, you don't get hard boundaries. Instead, rows with similar values are stored physically next to each other. When you filter by a clustered column, BigQuery skips blocks that don't match.
+Best used for: 
+Columns frequently used in WHERE filters, GROUP BY clauses, or JOINS that have many unique values (e.g., PatientID, ProviderID, State).Example:Let's add clustering to that same transactions table, sorting it internally by PatientID.
+
+Example:Let's add clustering to that same transactions table, sorting it internally by PatientID.
+CREATE TABLE `silver_dataset.transactions`(
+    Transaction_Key STRING,
+    PatientID STRING,
+    VisitDate DATE,
+    Amount NUMERIC
+)
+PARTITION BY VisitDate
+CLUSTER BY PatientID; -- 👈 Sorts the rows inside each date bucket by PatientID
+
+The Performance Impact:If you run this query:
+SELECT SUM(Amount) 
+FROM `silver_dataset.transactions` 
+WHERE VisitDate = '2026-06-11' AND PatientID = 'HOSP1-000001';
+
+Partitioning kicks in: BigQuery discards 99.9% of the table and only opens the 2026-06-11 bucket.
+Clustering kicks in: Inside that bucket, BigQuery knows exactly which storage blocks contain PatientID = 'HOSP1-000001' because they are sorted. It jumps straight to those blocks and skips the rest.
+
+⚖️ Summary Cheat-Sheet for Interviews
+Feature				Partitioning							Clustering
+Data Layout			Hard, separate physical segments.		Sorted blocks within segments.
+Max Limits			Up to 4,000 partitions per table.		Up to 4 columns per table.
+Best Column Types	DATE, TIMESTAMP, or sequential INT64.	High-cardinality STRING, BOOL, or IDs.
+Cost Estimation		BigQuery tells you the exact cost before you click run.
+															Cost reduction is calculated after execution completes.
+Primary 			Use CaseTime-series filtering (e.g., "Last 30 days").
+															Frequent Joins, Group By, or specific ID lookups.
+
+

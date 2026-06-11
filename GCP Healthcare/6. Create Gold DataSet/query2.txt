@@ -1,0 +1,837 @@
+--2. Patient History (Gold) : This table provides a complete history of a patient’s visits, diagnoses, and financial interactions.
+
+avd-databricks-demo.silver_dataset.patients
+--------------
+Patient_Key				SRC_PatientID  FirstName  LastName  MiddleName	SSN			 PhoneNumber	  Gender  DOB		  Address									SRC_ModifiedDate
+HOSP1-000001-HospitalA	HOSP1-000001   Rick	   	  Russo     U			188-23-9828	 +1-630-829-7585  Female  04-06-1937  Unit 0915 Box 7064, DPO AA 82777			25-05-2020	  	
+HOSP1-000002-HospitalA	HOSP1-000002   Gregory	  Graham    B			730-45-8217	 522-501-5461	  Female  10-06-1937  9864 Gibson Islands, Danielside, KY 99809	05-06-2021	  	
+
+datasource is_quarantined	inserted_date	modified_date	is_current
+HospitalA	 FALSE
+HospitalA	 FALSE
+
+avd-databricks-demo.silver_dataset.encounters
+-----------
+Encounter_Key		EncounterID	PatientID		EncounterDate	EncounterType	ProviderID	DepartmentID	ProcedureCode	SRC_InsertedDate	SRC_ModifiedDate  datasource is_quarantined
+ENC000001-HospitalA ENC000001	HOSP1-001127	14-01-2020		Inpatient		PROV0133	DEPT019			97099			08-03-2023			01-03-2020		  HospitalA	 FALSE
+ENC000002-HospitalA ENC000002	HOSP1-003842	21-01-2021		Outpatient		PROV0147	DEPT013			19272			01-05-2022			05-02-2022		  HospitalA	 FALSE
+ENC000001-HospitalB ENC000001	HOSP1-001913	14-07-2021		Inpatient		PROV0238	DEPT005			79392			31-10-2021			26-01-2020		  HospitalB	 FALSE
+ENC000002-HospitalB ENC000002	HOSP1-004468	21-10-2020		Outpatient		PROV0422	DEPT011			39525			28-04-2020			12-07-2021		  HospitalB	 FALSE
+
+modified_date inserted_date is_current
+
+avd-databricks-demo.silver_dataset.providers
+---------
+ProviderID	FirstName	LastName	Specialization		DeptID	NPI			datasource	is_quarantined
+H1-PROV0001	Brandon		Harper		Oncology			DEPT018	3086631719	HospitalA	FALSE
+H1-PROV0002	Luke		Clark		Emergency Medicine	DEPT006	1265568618	HospitalB	FALSE
+
+avd-databricks-demo.silver_dataset.departments
+-----------
+DeptID				SRC_DeptID	Name		datasource 	is_quarantined
+DEPT001-HospitalA	DEPT001		Emergency	HospitalA  	FALSE
+DEPT002-HospitalB	DEPT002		Cardiology	HospitalB	FALSE
+
+avd-databricks-demo.silver_dataset.transactions
+------------
+Transaction_Key			SRC_TransactionID  EncounterID  PatientID	  ProviderID  DeptID   VisitDate   ServiceDate  PaidDate	VisitType  Amount  AmountType  PaidAmount  
+TRANS000001-HospitalA	TRANS000001	   	   ENC001204	HOSP1-002372  PROV0456	  DEPT002  02-08-2024  25-05-2024	15-06-2024  Routine	   988.36  Medicare	   315.70	   
+TRANS000002-HospitalA	TRANS000002	   	   ENC000029	HOSP1-002329  PROV0321 	  DEPT013  02-05-2024  14-09-2024	19-09-2024	Emergency  291.26  Medicare	   667.98	   
+TRANS000001-HospitalB	TRANS000001	   	   ENC000512	HOSP1-002609  PROV0434	  DEPT016  31-08-2024  03-04-2024	06-02-2024	Follow-up  616.86  Self-pay	   234.57
+TRANS000002-HospitalB	TRANS000002	   	   ENC009236	HOSP1-004031  PROV0382	  DEPT017  10-04-2024  25-08-2024	01-02-2024	Follow-up  680.41  Insurance   445.86
+
+ClaimID	       PayorID	    ProcedureCode ICDCode	  LineOfBusiness  MedicaidID  MedicareID  SRC_InsertDate  SRC_ModifiedDate  datasource  is_quarantined inserted_date inserted_date is_current
+CLAIM533365	   PAYOR4707    94521		  I19.4	      Commercial	  MEDI24173	  MCARE19466  16-01-2021  	  27-12-2021		HospitalA   FALSE		 
+CLAIM629724	   PAYOR1481    51588		  I54.0		  Self-Pay		  MEDI63110	  MCARE97946  06-02-2021      26-01-2022 		HospitalA   FALSE
+CLAIM879364	   PAYOR9066    93411		  I95.4		  Commercial	  MEDI13625	  MCARE38344  01-10-2021      15-01-2024		HospitalB   FALSE
+CLAIM835197	   PAYOR1013    86401		  I39.5		  Self-Pay		  MEDI20311	  MCARE53178  20-03-2020      29-01-2023		HospitalB   FALSE
+
+avd-databricks-demo.silver_dataset.claims
+---------
+Claim_Key				SRC_ClaimID	TransactionID	PatientID		EncounterID	ProviderID	DeptID	ServiceDate	ClaimDate	PayorID				ClaimAmount	PaidAmount	
+CLAIM000001-HospitalA 	CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		
+CLAIM000002-HospitalA 	CLAIM000002	TRANS004722		HOSP1-000299	ENC001313	PROV0260	DEPT002	21-05-2024	10-05-2024	BlueCross			3871.53		3028.71		
+CLAIM000001-HospitalB 	CLAIM000001	TRANS001819		HOSP1-001494	ENC001805	PROV0242	DEPT007	26-08-2024	05-10-2024	UnitedHealthcare	4600.39		3228.9		
+CLAIM000002-HospitalB 	CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		
+
+ClaimStatus	PayorType	Deductible	Coinsurance	Copay	SRC_InsertDate	SRC_ModifiedDate	datasource	is_quarantined	modified_date	inserted_date	is_current
+Pending		Self-pay	279.32		170.77		13.01	15-06-2022		03-03-2024			HospitalA	FALSE			
+Approved	Private		250.16		100.11		11.37	13-11-2023		15-05-2023			HospitalA	FALSE
+Approved	Government	101.31		99.56		45.99	13-01-2023		10-01-2020			HospitalB	FALSE
+Paid		Private		125.13		96.39		30.87	03-10-2024		08-02-2023			HospitalB	FALSE
+
+
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.gold_dataset.patient_history`(
+    Patient_Key         STRING OPTIONS(description="Unique enterprise patient surrogate key"),
+    FirstName           STRING,
+    LastName            STRING,
+    MiddleName          STRING,
+    Gender              STRING,
+    DOB                 DATE,
+    Address             STRING,
+    EncounterID         STRING,
+    EncounterDate       DATE,
+    EncounterType       STRING,
+    Doctor              STRING,
+    TransactionID       STRING,
+    VisitDate           DATE,
+    ServiceDate         DATE,
+    PaidDate            DATE,
+    BilledAmount        NUMERIC,
+    PaidAmount          NUMERIC,
+    ClaimAmount         NUMERIC,
+    ClaimPaidAmount     NUMERIC,
+    ClaimStatus         STRING,
+    PayorType           STRING
+)
+#Metadata Descriptions: Adding OPTIONS(description="...") directly within the CREATE TABLE ensures your column documentation surfaces directly inside the BigQuery UI and catalogs for analysts.
+#Optimises Performance: Partitions the final Gold table by EncounterDate and clusters it by Patient_Key to ensure downstream BI dashboards query it instantly without scanning the whole dataset.
+PARTITION BY EncounterDate
+CLUSTER BY Patient_Key;
+
+-- Step 2: Clear historical data for full reload
+TRUNCATE TABLE `avd-databricks-demo.gold_dataset.patient_history`;
+
+-- Step 3: Core Analytics Extraction 
+INSERT INTO `avd-databricks-demo.gold_dataset.patient_history` (
+    Patient_Key, FirstName, LastName, MiddleName, Gender, DOB, Address,
+    EncounterID, EncounterDate, EncounterType, Doctor,
+    TransactionID, VisitDate, ServiceDate, PaidDate, BilledAmount, PaidAmount,
+    ClaimAmount, ClaimPaidAmount, ClaimStatus, PayorType
+)
+WITH current_patients AS (
+    SELECT Patient_Key, SRC_PatientID, FirstName, LastName, MiddleName, Gender, DOB, Address, datasource
+    FROM `avd-databricks-demo.silver_dataset.patients`
+    WHERE is_current = TRUE AND is_quarantined = FALSE
+),
+
+current_encounters AS (
+    SELECT Encounter_Key, EncounterID, PatientID, EncounterType, ProviderID, datasource,
+           PARSE_DATE('%d-%m-%Y', EncounterDate) AS EncounterDate -- Safe conversion handling
+    FROM `avd-databricks-demo.silver_dataset.encounters`
+    WHERE is_current = TRUE AND is_quarantined = FALSE
+),
+
+current_providers AS (
+    SELECT SPLIT(ProviderID, '-')[SAFE_OFFSET(1)] AS Clean_ProviderID,
+           CONCAT(FirstName, ' ', LastName) AS Doctor_Name, datasource
+    FROM `avd-databricks-demo.silver_dataset.providers`
+    WHERE is_quarantined = FALSE
+),
+
+current_transactions AS (
+    SELECT SRC_TransactionID, EncounterID, PatientID, Amount, PaidAmount, datasource,
+           PARSE_DATE('%d-%m-%Y', VisitDate) AS VisitDate,
+           PARSE_DATE('%d-%m-%Y', ServiceDate) AS ServiceDate,
+           PARSE_DATE('%d-%m-%Y', PaidDate) AS PaidDate
+    FROM `avd-databricks-demo.silver_dataset.transactions`
+    WHERE is_current = TRUE AND is_quarantined = FALSE
+),
+
+current_claims AS (
+    SELECT TransactionID, ClaimStatus, PayorType, ClaimAmount, PaidAmount, datasource
+    FROM `avd-databricks-demo.silver_dataset.claims`
+    WHERE is_current = TRUE AND is_quarantined = FALSE
+)
+
+SELECT 
+    p.Patient_Key,
+    p.FirstName,
+    p.LastName,
+    p.MiddleName,
+    p.Gender,
+    p.DOB,
+    p.Address,
+    e.EncounterID,
+    e.EncounterDate,
+    COALESCE(e.EncounterType, 'Unknown') AS EncounterType,
+    COALESCE(pr.Doctor_Name, 'Unknown Doctor') AS Doctor,
+    t.SRC_TransactionID AS TransactionID,
+    t.VisitDate,
+    t.ServiceDate,
+    t.PaidDate,
+    CAST(t.Amount AS NUMERIC) AS BilledAmount,
+    CAST(t.PaidAmount AS NUMERIC) AS PaidAmount,
+    CAST(c.ClaimAmount AS NUMERIC) AS ClaimAmount,
+    CAST(c.PaidAmount AS NUMERIC) AS ClaimPaidAmount,
+    COALESCE(c.ClaimStatus, 'No Claim File') AS ClaimStatus,
+    COALESCE(c.PayorType, 'Not Listed') AS PayorType
+
+FROM current_patients AS p
+
+-- 1. Patients link to Encounters safely using business keys + matching tenant origin
+LEFT JOIN current_encounters AS e
+    ON p.SRC_PatientID = e.PatientID 
+    AND p.datasource = e.datasource
+
+-- 2. Encounters yield provider context
+LEFT JOIN current_providers AS pr
+    ON e.ProviderID = pr.Clean_ProviderID
+    AND e.datasource = pr.datasource
+
+-- 3. Industry Chain: Connect Transactions directly to the Encounter context, NOT the patient root
+LEFT JOIN current_transactions AS t
+    ON e.EncounterID = t.EncounterID
+    AND e.datasource = t.datasource
+
+-- 4. Transactions tie straight into Claim operational offsets
+LEFT JOIN current_claims AS c
+    ON t.SRC_TransactionID = c.TransactionID
+    AND t.datasource = c.datasource;
+	
+	--------------------
+	
+INSERT INTO `avd-databricks-demo.gold_dataset.patient_history` (COLUMNS)
+WITH current_patients AS (), current_encounters AS (),current_providers AS (),current_transactions AS (), current_claims AS ()
+
+SELECT
+FROM current_patients AS p
+LEFT JOIN current_encounters AS e
+LEFT JOIN current_providers AS pr
+LEFT JOIN current_transactions AS t
+LEFT JOIN current_claims AS c
+;
+###########################################################################
+---4. Insert data into `avd-databricks-demo.gold_dataset.patient_history` table
+INSERT INTO `avd-databricks-demo.gold_dataset.patient_history`
+Select all the required Columns from silver dataSet
+SELECT 
+		p.Patient_Key,
+		p.FirstName,
+		p.LastName,
+		p.MiddleName,
+		p.Gender,
+		p.DOB,
+		p.Address,
+		e.EncounterDate,
+		e.EncounterType,
+		CONCAT(pr.FirstName,' ',pr.LastName) as Doctor,
+		t.SRC_TransactionID,
+		t.VisitDate,
+		t.ServiceDate,
+		t.PaidDate,
+		t.Amount AS BilledAmount,
+		c.PaidAmount, 
+		c.ClaimAmount,
+		c.PaidAmount AS ClaimPaidAmount,
+		c.ClaimStatus,
+		c.PayorType
+
+FROM 
+avd-databricks-demo.silver_dataset.patients p
+LEFT JOIN
+avd-databricks-demo.silver_dataset.encounters e ON p.SRC_PatientID = e.PatientID
+LEFT JOIN
+avd-databricks-demo.silver_dataset.providers pr ON e.ProviderID = SPLIT(pr.ProviderID,'-')[OFFSET(1)]
+LEFT JOIN  
+avd-databricks-demo.silver_dataset.transactions t ON p.SRC_PatientID = t.PatientID
+LEFT JOIN
+avd-databricks-demo.silver_dataset.claims c ON t.SRC_TransactionID = c.TransactionID
+WHERE is_current = TRUE;
+
+
+
+---2. Create the table to put the required data
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.gold_dataset.patient_history`(
+							Patient_Key		   STRING,
+                            FirstName          STRING,
+                            LastName           STRING,
+                            MiddleName         STRING,
+                            Gender             STRING,
+                            DOB                DATE,
+                            Address            STRING,
+                            EncounterDate      DATE,
+                            EncounterType      STRING,
+                            Doctor             STRING,
+                            TransactionID	   STRING,
+                            VisitDate          DATE,
+                            ServiceDate        DATE,
+                            PaidDate           DATE,
+                            BilledAmount       NUMERIC,
+                            PaidAmount         NUMERIC,
+                            ClaimAmount        NUMERIC,
+                            ClaimPaidAmount    NUMERIC,
+                            ClaimStatus        STRING,
+                            PayorType          STRING
+);
+
+---3. Truncate to remove old values(if exist)
+TRUNCATE TABLE `avd-databricks-demo.gold_dataset.patient_history`;
+
+#Massive Fan-out / Cartesian Product Bug:
+You are left-joining encounters directly to patients, and then joining transactions also directly to patients (p.SRC_PatientID = t.PatientID). Because a patient can have 5 encounters and 5 transactions, joining both to the patient row creates a Cartesian explosion (5 times 5 = 25) rows instead of 5
+Industry Fix: Transactions and Claims are natively tied to an Encounter. You must chain the joins sequentially: Patients --> Encounters --> Transactions --> Claims.
+
+#Missing Multi-Tenant Compound Joins:
+Joining purely on raw natural keys like p.SRC_PatientID = e.PatientID is dangerous. If HospitalA and HospitalB both use internal ID HOSP1-000001 for two entirely different people, your data will cross-contaminate. You must include datasource in your join conditions or use your Patient_Key.
+
+1. Data Modeling & Architecture Questions
+Q: Why did you change the join logic from joining everything on PatientID to a chained sequence (Patients → Encounters → Transactions → Claims)?
+🎯 Winning Answer: "The original code created a dangerous Cartesian product (fan-out bug). Because a single patient can have multiple independent encounters and multiple independent financial transactions, joining both tables directly to the patient root duplicates rows exponentially. By chaining the tables hierarchically based on their natural healthcare relationships—where transactions and claims belong to an encounter—we preserve the correct grain of the data and ensure financial metrics are not double-counted."
+
+Q: Why did you include datasource in every single LEFT JOIN condition?
+🎯 Winning Answer: "This is crucial for Multi-Tenant Isolation. When consolidating data from different source systems (like Hospital A and Hospital B), natural business keys like PatientID or EncounterID frequently overlap. If both hospitals use ENC000001, a simple join on ID would cross-contaminate data between completely different patients. Joining on both ID and datasource guarantees tenant safety."
+
+2. BigQuery & Performance Optimization Questions
+Q: Why did you choose to Partition by EncounterDate and Cluster by Patient_Key in the Gold table?
+🎯 Winning Answer: "In BigQuery, partitioning and clustering radically reduce query costs and look-up times. We partitioned by EncounterDate because analytical queries and BI dashboards almost always filter patient histories by a time window (e.g., 'last 30 days'). We clustered by Patient_Key because the secondary most common access pattern is looking up a specific patient's timeline, which groups their records together physically in storage."
+
+Q: In the previous Provider Summary table, you removed inserted_date from the CLUSTER BY clause. Why?
+🎯 Winning Answer: "The table was already partitioned by inserted_date. Including the partition column as the first clustering column is redundant in BigQuery and wastes processing slots. Instead, we cluster on high-cardinality search columns like SRC_PatientID or Provider_Name to optimize downstream query filters."
+
+3. Data Quality & Edge-Case Questions
+Q: Why did you use COALESCE(d.Department_Name, 'Unknown Department') instead of just dropping rows where the department name was missing?
+🎯 Winning Answer: "In a Gold tier financial/clinical mart, we must avoid data loss. If a transaction occurs but the master data for the department hasn't synced yet, a strict inner join or dropping NULLs would completely erase that financial transaction from our executive dashboards. Using COALESCE to route unmapped data to an 'Unknown Department' bucket keeps our financial ledger whole while signaling a data quality gap to data stewards."
+
+Q: Why did you extract fields using CTEs (like current_patients) with is_current = TRUE and is_quarantined = FALSE before doing the main join?
+🎯 Winning Answer: "First, it resolves column ambiguity, as multiple silver tables share these metadata columns. Second, it implements a fail-fast data quality gate. By filtering out historical SCD Type 2 variations (is_current = FALSE) and corrupted records (is_quarantined = TRUE) inside localized CTEs, we ensure the final join layer processes the smallest, cleanest possible dataset, saving BigQuery slot travel time."
+
+#####################################
+To shift from a Full-Refresh (TRUNCATE + INSERT) pattern to an Incremental MERGE pipeline, you need to use a design pattern called Idempotent Partition Rolling.
+Instead of scanning and processing your entire database every run, you look back at the last few days of modified data from your Silver layer, calculate the changes, and upsert (MERGE) them into the corresponding partitions of your Gold table.
+1. The Strategy: Look-Back Windows
+Because healthcare source systems can update records from a few days ago (e.g., late claims or updated encounters), your incremental pipeline should scan a dynamic rolling window (e.g., the last 3 days of modifications).
+2. The Incremental Production Script
+-- DECLARE variables to create a dynamic incremental look-back window
+DECLARE lookback_timestamp TIMESTAMP;
+DECLARE lookback_date DATE;
+
+-- Look at data modified or inserted in the last 3 days
+SET lookback_timestamp = TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 3 DAY);
+SET lookback_date = DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY);
+
+##---------------##
+MERGE INTO `avd-databricks-demo.gold_dataset.patient_history` AS target
+USING (
+	WITH incremental_patients AS (),incremental_encounters AS (), current_providers AS (),incremental_transactions AS (),
+	current_claims AS (),combined_incremental AS ()
+	) AS staging
+WHEN MATCHED THEN UPDATE SET
+        target.FirstName = staging.FirstName...
+WHEN NOT MATCHED THEN INSERT (
+        Patient_Key...)
+    VALUES (
+        staging.Patient_Key...);
+##---------------##
+
+
+
+MERGE INTO `avd-databricks-demo.gold_dataset.patient_history` AS target
+USING (
+    -- CTE 1: Filter ONLY for patients updated within the lookback window
+    WITH incremental_patients AS (
+        SELECT Patient_Key, SRC_PatientID, FirstName, LastName, MiddleName, Gender, DOB, Address, datasource
+        FROM `avd-databricks-demo.silver_dataset.patients`
+        WHERE is_current = TRUE 
+          AND is_quarantined = FALSE
+          AND modified_date >= lookback_timestamp -- Incremental Filter
+    ),
+
+    -- CTE 2: Filter ONLY for encounters updated within the lookback window
+    incremental_encounters AS (
+        SELECT Encounter_Key, EncounterID, PatientID, EncounterType, ProviderID, datasource,
+               PARSE_DATE('%d-%m-%Y', EncounterDate) AS EncounterDate
+        FROM `avd-databricks-demo.silver_dataset.encounters`
+        WHERE is_current = TRUE 
+          AND is_quarantined = FALSE
+          AND modified_date >= lookback_timestamp -- Incremental Filter
+    ),
+
+    current_providers AS (
+        SELECT SPLIT(ProviderID, '-')[SAFE_OFFSET(1)] AS Clean_ProviderID,
+               CONCAT(FirstName, ' ', LastName) AS Doctor_Name, datasource
+        FROM `avd-databricks-demo.silver_dataset.providers`
+        WHERE is_current = TRUE AND is_quarantined = FALSE
+    ),
+
+    -- CTE 3: Filter ONLY for transactions updated within the lookback window
+    incremental_transactions AS (
+        SELECT SRC_TransactionID, EncounterID, PatientID, Amount, PaidAmount, datasource,
+               PARSE_DATE('%d-%m-%Y', VisitDate) AS VisitDate,
+               PARSE_DATE('%d-%m-%Y', ServiceDate) AS ServiceDate,
+               PARSE_DATE('%d-%m-%Y', PaidDate) AS PaidDate
+        FROM `avd-databricks-demo.silver_dataset.transactions`
+        WHERE is_current = TRUE 
+          AND is_quarantined = FALSE
+          AND modified_date >= lookback_timestamp -- Incremental Filter
+    ),
+
+    current_claims AS (
+        SELECT TransactionID, ClaimStatus, PayorType, ClaimAmount, PaidAmount, datasource
+        FROM `avd-databricks-demo.silver_dataset.claims`
+        WHERE is_current = TRUE AND is_quarantined = FALSE
+    ),
+
+    -- Combine the incremental datasets
+    combined_incremental AS (
+        SELECT 
+            p.Patient_Key, p.FirstName, p.LastName, p.MiddleName, p.Gender, p.DOB, p.Address,
+            e.EncounterID, e.EncounterDate,
+            COALESCE(e.EncounterType, 'Unknown') AS EncounterType,
+            COALESCE(pr.Doctor_Name, 'Unknown Doctor') AS Doctor,
+            t.SRC_TransactionID AS TransactionID, t.VisitDate, t.ServiceDate, t.PaidDate,
+            CAST(t.Amount AS NUMERIC) AS BilledAmount,
+            CAST(t.PaidAmount AS NUMERIC) AS PaidAmount,
+            CAST(c.ClaimAmount AS NUMERIC) AS ClaimAmount,
+            CAST(c.PaidAmount AS NUMERIC) AS ClaimPaidAmount,
+            COALESCE(c.ClaimStatus, 'No Claim File') AS ClaimStatus,
+            COALESCE(c.PayorType, 'Not Listed') AS PayorType
+        FROM incremental_patients AS p
+        LEFT JOIN incremental_encounters AS e 
+            ON p.SRC_PatientID = e.PatientID AND p.datasource = e.datasource
+        LEFT JOIN current_providers AS pr 
+            ON e.ProviderID = pr.Clean_ProviderID AND e.datasource = pr.datasource
+        LEFT JOIN incremental_transactions AS t 
+            ON e.EncounterID = t.EncounterID AND e.datasource = t.datasource
+        LEFT JOIN current_claims AS c 
+            ON t.SRC_TransactionID = c.TransactionID AND t.datasource = c.datasource
+    )
+
+    SELECT * FROM combined_incremental
+    WHERE EncounterDate >= lookback_date -- Ensures we don't scan deep historical partitions
+) AS staging
+
+-- BigQuery Best Practice: Use Partition Pruning in the ON clause to restrict target table scan cost
+ON target.EncounterDate >= lookback_date
+AND target.Patient_Key = staging.Patient_Key
+AND COALESCE(target.EncounterID, 'N/A') = COALESCE(staging.EncounterID, 'N/A')
+
+-- If the patient encounter already exists in the Gold partition, update it with new financial/claim info
+WHEN MATCHED THEN
+    UPDATE SET
+        target.FirstName = staging.FirstName,
+        target.LastName = staging.LastName,
+        target.Address = staging.Address,
+        target.BilledAmount = staging.BilledAmount,
+        target.PaidAmount = staging.PaidAmount,
+        target.ClaimAmount = staging.ClaimAmount,
+        target.ClaimPaidAmount = staging.ClaimPaidAmount,
+        target.ClaimStatus = staging.ClaimStatus,
+        target.PayorType = staging.PayorType
+
+-- If it is a brand new patient encounter within the lookback window, insert it
+WHEN NOT MATCHED THEN
+    INSERT (
+        Patient_Key, FirstName, LastName, MiddleName, Gender, DOB, Address,
+        EncounterID, EncounterDate, EncounterType, Doctor,
+        TransactionID, VisitDate, ServiceDate, PaidDate, BilledAmount, PaidAmount,
+        ClaimAmount, ClaimPaidAmount, ClaimStatus, PayorType
+    )
+    VALUES (
+        staging.Patient_Key, staging.FirstName, staging.LastName, staging.MiddleName, staging.Gender, staging.DOB, staging.Address,
+        staging.EncounterID, staging.EncounterDate, staging.EncounterType, staging.Doctor,
+        staging.TransactionID, staging.VisitDate, staging.ServiceDate, staging.PaidDate, staging.BilledAmount, staging.PaidAmount,
+        staging.ClaimAmount, staging.ClaimPaidAmount, staging.ClaimStatus, staging.PayorType
+    );
+📈 Why this configuration satisfies Production Code Reviews
+Partition Pruning (Cost Reduction): Notice the target.EncounterDate >= lookback_date clause inside the ON statement. This tells BigQuery to only open and scan the partitions for the last 3 days within the target table. Without this, BigQuery performs a full table scan, destroying your cost efficiency.
+Idempotency: If you run this query 10 times in a row, the data will look exactly the same. It overrides existing rows safely without duplicating them.
+Isolation of Scale: As your database grows from 10,000 patients to 50,000,000 patients over the years, this query will cost the exact same amount to run because it only processes a 3-day delta.
+
+
+Why Industry Defaults to Incremental MERGE for Gold
+Cost Efficiency at Scale: 
+Gold layers often combine multiple large tables (Patients, Encounters, Transactions, Claims). Doing a TRUNCATE + INSERT on millions of historical records daily forces BigQuery to process terabytes of data every single night. An incremental merge only processes the day's changes, slashing your cloud bill by 90%+.
+Speed & SLA Compliance: 
+Business stakeholders and BI dashboards expect data to be fresh by 6:00 AM. A full refresh of a massive healthcare dataset might take hours to compute. An incremental merge can finish in minutes, ensuring you never miss your data delivery deadlines.
+Downstream Stability: Continually truncating a table completely empties it for a brief window. If a Tableau dashboard or an executive pulls a report at the exact second the table is truncated, their dashboard will crash or show zero data. A MERGE statement keeps the existing data queryable while the new data is being written.
+
+In enterprise setups (like hospitals, banks, and e-commerce), data engineers write Incremental MERGE code for daily workflows. However, they pass a parameter to their orchestration tool (like Airflow or dbt):
+Mon–Sat: is_incremental = TRUE (Runs the fast, cheap 3-day lookback MERGE).
+Sunday Night: is_incremental = FALSE (Triggers a FULL REFRESH to fix any data drift, handle deep historical updates, and ensure 100% data audit alignment).
+If you are prepping for an interview, telling them: "We use an Incremental Merge with a rolling lookback window for daily pipelines to save costs, but orchestrate an automated monthly full refresh to handle deep historical backfills" will immediately prove you have real-world production experience.
+
+##Toggle framework in your SQL script so a single query can dynamically switch between Full Refresh and Incremental based on a parameter
+Here is the production-ready script utilizing BigQuery procedural SQL (DECLARE and IF statements) to implement a unified Toggle Framework.This allows your orchestration tool (like Airflow, Prefect, or BigQuery Scheduled Queries) to pass a single boolean parameter. If set to TRUE, it executes a lightning-fast incremental merge; if set to FALSE, it completely builds and recalculates the entire history.
+-- =========================================================================
+-- SYSTEM CONFIGURATION PARAMETERS (Passed by your Orchestrator)
+-- =========================================================================
+DECLARE is_incremental_run BOOL DEFAULT TRUE; -- Toggle: TRUE = Fast Merge, FALSE = Full History Rebuild
+DECLARE lookback_days INT64 DEFAULT 3;         -- Length of rolling safety window for incremental runs
+
+-- Internal operational variables
+DECLARE lookback_timestamp TIMESTAMP;
+DECLARE lookback_date DATE;
+
+-- Calculate execution windows dynamically
+IF is_incremental_run THEN
+  SET lookback_timestamp = TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL lookback_days DAY);
+  SET lookback_date = DATE_SUB(CURRENT_DATE(), INTERVAL lookback_days DAY);
+ELSE
+  -- Full Refresh Window: Set to absolute beginning of time to capture all records
+  SET lookback_timestamp = TIMESTAMP('1970-01-01 00:00:00 UTC');
+  SET lookback_date = DATE('1970-01-01');
+END IF;
+
+
+-- =========================================================================
+-- STEP 1: DESTINATION INFRASTRUCTURE INITIALIZATION
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.gold_dataset.patient_history`(
+    Patient_Key         STRING,
+    FirstName           STRING,
+    LastName            STRING,
+    MiddleName          STRING,
+    Gender              STRING,
+    DOB                 DATE,
+    Address             STRING,
+    EncounterID         STRING,
+    EncounterDate       DATE,
+    EncounterType       STRING,
+    Doctor              STRING,
+    TransactionID       STRING,
+    VisitDate           DATE,
+    ServiceDate         DATE,
+    PaidDate            DATE,
+    BilledAmount        NUMERIC,
+    PaidAmount          NUMERIC,
+    ClaimAmount         NUMERIC,
+    ClaimPaidAmount     NUMERIC,
+    ClaimStatus         STRING,
+    PayorType           STRING
+)
+PARTITION BY EncounterDate
+CLUSTER BY Patient_Key;
+
+
+-- =========================================================================
+-- STEP 2: DYNAMIC EXECUTION CONTROL
+-- =========================================================================
+IF NOT is_incremental_run THEN
+  -- Safeguard: Wipe the destination table clean ONLY during an explicit Full Rebuild
+  TRUNCATE TABLE `avd-databricks-demo.gold_dataset.patient_history`;
+END IF;
+
+
+-- =========================================================================
+-- STEP 3: UNIFIED IDEMPOTENT DATA PROCESSING LAYER
+-- =========================================================================
+MERGE INTO `avd-databricks-demo.gold_dataset.patient_history` AS target
+USING (
+    WITH filtered_patients AS (
+        SELECT Patient_Key, SRC_PatientID, FirstName, LastName, MiddleName, Gender, DOB, Address, datasource
+        FROM `avd-databricks-demo.silver_dataset.patients`
+        WHERE is_current = TRUE AND is_quarantined = FALSE
+          AND modified_date >= lookback_timestamp -- Dynamically prunes Bronze/Silver scan
+    ),
+
+    filtered_encounters AS (
+        SELECT Encounter_Key, EncounterID, PatientID, EncounterType, ProviderID, datasource,
+               PARSE_DATE('%d-%m-%Y', EncounterDate) AS EncounterDate
+        FROM `avd-databricks-demo.silver_dataset.encounters`
+        WHERE is_current = TRUE AND is_quarantined = FALSE
+          AND modified_date >= lookback_timestamp
+    ),
+
+    current_providers AS (
+        -- Static mapping dimension (Always scanned completely to ensure reference integrity)
+        SELECT SPLIT(ProviderID, '-')[SAFE_OFFSET(1)] AS Clean_ProviderID,
+               CONCAT(FirstName, ' ', LastName) AS Doctor_Name, datasource
+        FROM `avd-databricks-demo.silver_dataset.providers`
+        WHERE is_current = TRUE AND is_quarantined = FALSE
+    ),
+
+    filtered_transactions AS (
+        SELECT SRC_TransactionID, EncounterID, PatientID, Amount, PaidAmount, datasource,
+               PARSE_DATE('%d-%m-%Y', VisitDate) AS VisitDate,
+               PARSE_DATE('%d-%m-%Y', ServiceDate) AS ServiceDate,
+               PARSE_DATE('%d-%m-%Y', PaidDate) AS PaidDate
+        FROM `avd-databricks-demo.silver_dataset.transactions`
+        WHERE is_current = TRUE AND is_quarantined = FALSE
+          AND modified_date >= lookback_timestamp
+    ),
+
+    current_claims AS (
+        SELECT TransactionID, ClaimStatus, PayorType, ClaimAmount, PaidAmount, datasource
+        FROM `avd-databricks-demo.silver_dataset.claims`
+        WHERE is_current = TRUE AND is_quarantined = FALSE
+    )
+
+    -- Transform and stitch the journey together
+    SELECT 
+        p.Patient_Key, p.FirstName, p.LastName, p.MiddleName, p.Gender, p.DOB, p.Address,
+        e.EncounterID, e.EncounterDate,
+        COALESCE(e.EncounterType, 'Unknown') AS EncounterType,
+        COALESCE(pr.Doctor_Name, 'Unknown Doctor') AS Doctor,
+        t.SRC_TransactionID AS TransactionID, t.VisitDate, t.ServiceDate, t.PaidDate,
+        CAST(t.Amount AS NUMERIC) AS BilledAmount,
+        CAST(t.PaidAmount AS NUMERIC) AS PaidAmount,
+        CAST(c.ClaimAmount AS NUMERIC) AS ClaimAmount,
+        CAST(c.PaidAmount AS NUMERIC) AS ClaimPaidAmount,
+        COALESCE(c.ClaimStatus, 'No Claim File') AS ClaimStatus,
+        COALESCE(c.PayorType, 'Not Listed') AS PayorType
+    FROM filtered_patients AS p
+    LEFT JOIN filtered_encounters AS e 
+        ON p.SRC_PatientID = e.PatientID AND p.datasource = e.datasource
+    LEFT JOIN current_providers AS pr 
+        ON e.ProviderID = pr.Clean_ProviderID AND e.datasource = pr.datasource
+    LEFT JOIN filtered_transactions AS t 
+        ON e.EncounterID = t.EncounterID AND e.datasource = t.datasource
+    LEFT JOIN current_claims AS c 
+        ON t.SRC_TransactionID = c.TransactionID AND t.datasource = c.datasource
+    WHERE e.EncounterDate >= lookback_date
+) AS staging
+
+-- Target table partition pruning (Speeds up search by restricting scanned target blocks)
+ON target.EncounterDate >= lookback_date
+AND target.Patient_Key = staging.Patient_Key
+AND COALESCE(target.EncounterID, 'N/A') = COALESCE(staging.EncounterID, 'N/A')
+
+-- MATCH BLOCK: Executed during updates or incremental overwrites
+WHEN MATCHED THEN
+    UPDATE SET
+        target.FirstName = staging.FirstName,
+        target.LastName = staging.LastName,
+        target.Address = staging.Address,
+        target.BilledAmount = staging.BilledAmount,
+        target.PaidAmount = staging.PaidAmount,
+        target.ClaimAmount = staging.ClaimAmount,
+        target.ClaimPaidAmount = staging.ClaimPaidAmount,
+        target.ClaimStatus = staging.ClaimStatus,
+        target.PayorType = staging.PayorType
+
+-- NOT MATCHED BLOCK: Executed during new rows ingestion OR when rebuilding tables from scratch
+WHEN NOT MATCHED THEN
+    INSERT (
+        Patient_Key, FirstName, LastName, MiddleName, Gender, DOB, Address,
+        EncounterID, EncounterDate, EncounterType, Doctor,
+        TransactionID, VisitDate, ServiceDate, PaidDate, BilledAmount, PaidAmount,
+        ClaimAmount, ClaimPaidAmount, ClaimStatus, PayorType
+    )
+    VALUES (
+        staging.Patient_Key, staging.FirstName, staging.LastName, staging.MiddleName, staging.Gender, staging.DOB, staging.Address,
+        staging.EncounterID, staging.EncounterDate, staging.EncounterType, staging.Doctor,
+        staging.TransactionID, staging.VisitDate, staging.ServiceDate, staging.PaidDate, staging.BilledAmount, staging.PaidAmount,
+        staging.ClaimAmount, staging.ClaimPaidAmount, staging.ClaimStatus, staging.PayorType
+    );
+🧠 How this works under the hood
+When is_incremental_run = TRUE: 
+The script sets timestamps to 3 days ago. The source tables filter down to a tiny dataset, the target table only inspects its last 3 daily partitions, and modifications are seamlessly applied without interrupting end-user dashboards.
+When is_incremental_run = FALSE: 
+The script drops timestamps to 1970. The execution checks the conditional IF loop, runs TRUNCATE TABLE to eliminate history, and processes all data. Because the target table is empty, the WHEN MATCHED statement is skipped, and it purely performs a hyper-fast bulk INSERT.
+
+The Airflow Python DAG
+-----------------------
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.providers.google.cloud.operators.bigquery import BigQueryExecuteQueryOperator
+
+# Default arguments for the data pipeline tasks
+default_args = {
+    'owner': 'data_engineering',
+    'depends_on_past': False,
+    'email_on_failure': True,
+    'email': ['data-alerts@yourcompany.com'],
+    'retries': 2,
+    'retry_delay': timedelta(minutes=5),
+}
+
+with DAG(
+    dag_id='gcp_silver_to_gold_patient_history',
+    default_args=default_args,
+    description='Incremental daily and weekly full refresh toggle pipeline for Patient History Gold Table',
+    schedule_interval='0 6 * * *',  # Runs every day at 6:00 AM UTC
+    start_date=datetime(2026, 1, 1),
+    catchup=False,
+    tags=['healthcare_analytics', 'gold_tier', 'bigquery'],
+) as dag:
+
+    # BigQuery SQL script wrapped in production Jinja logic
+    sql_script = """
+    -- =========================================================================
+    -- SYSTEM CONFIGURATION PARAMETERS (Passed via Airflow Jinja Toggles)
+    -- =========================================================================
+    -- Airflow Rule: If execution day is Monday (1), run a FULL REFRESH. Otherwise, run INCREMENTAL.
+    DECLARE is_incremental_run BOOL DEFAULT {{ 'False' if dag_run.execution_date.strftime('%u') == '1' else 'True' }}; 
+    DECLARE lookback_days INT64 DEFAULT 3;         
+
+    DECLARE lookback_timestamp TIMESTAMP;
+    DECLARE lookback_date DATE;
+
+    IF is_incremental_run THEN
+      SET lookback_timestamp = TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL lookback_days DAY);
+      SET lookback_date = DATE_SUB(CURRENT_DATE(), INTERVAL lookback_days DAY);
+    ELSE
+      SET lookback_timestamp = TIMESTAMP('1970-01-01 00:00:00 UTC');
+      SET lookback_date = DATE('1970-01-01');
+    END IF;
+
+    -- =========================================================================
+    -- STEP 1: DESTINATION INFRASTRUCTURE INITIALIZATION
+    -- =========================================================================
+    CREATE TABLE IF NOT EXISTS `avd-databricks-demo.gold_dataset.patient_history`(
+        Patient_Key         STRING,
+        FirstName           STRING,
+        LastName            STRING,
+        MiddleName          STRING,
+        Gender              STRING,
+        DOB                 DATE,
+        Address             STRING,
+        EncounterID         STRING,
+        EncounterDate       DATE,
+        EncounterType       STRING,
+        Doctor              STRING,
+        TransactionID       STRING,
+        VisitDate           DATE,
+        ServiceDate         DATE,
+        PaidDate            DATE,
+        BilledAmount        NUMERIC,
+        PaidAmount          NUMERIC,
+        ClaimAmount         NUMERIC,
+        ClaimPaidAmount     NUMERIC,
+        ClaimStatus         STRING,
+        PayorType           STRING
+    )
+    PARTITION BY EncounterDate
+    CLUSTER BY Patient_Key;
+
+    -- =========================================================================
+    -- STEP 2: DYNAMIC EXECUTION CONTROL
+    -- =========================================================================
+    IF NOT is_incremental_run THEN
+      TRUNCATE TABLE `avd-databricks-demo.gold_dataset.patient_history`;
+    END IF;
+
+    -- =========================================================================
+    -- STEP 3: UNIFIED IDEMPOTENT DATA PROCESSING LAYER
+    -- =========================================================================
+    MERGE INTO `avd-databricks-demo.gold_dataset.patient_history` AS target
+    USING (
+        WITH filtered_patients AS (
+            SELECT Patient_Key, SRC_PatientID, FirstName, LastName, MiddleName, Gender, DOB, Address, datasource
+            FROM `avd-databricks-demo.silver_dataset.patients`
+            WHERE is_current = TRUE AND is_quarantined = FALSE
+              AND modified_date >= lookback_timestamp 
+        ),
+
+        filtered_encounters AS (
+            SELECT Encounter_Key, EncounterID, PatientID, EncounterType, ProviderID, datasource,
+                   PARSE_DATE('%d-%m-%Y', EncounterDate) AS EncounterDate
+            FROM `avd-databricks-demo.silver_dataset.encounters`
+            WHERE is_current = TRUE AND is_quarantined = FALSE
+              AND modified_date >= lookback_timestamp
+        ),
+
+        current_providers AS (
+            SELECT SPLIT(ProviderID, '-')[SAFE_OFFSET(1)] AS Clean_ProviderID,
+                   CONCAT(FirstName, ' ', LastName) AS Doctor_Name, datasource
+            FROM `avd-databricks-demo.silver_dataset.providers`
+            WHERE is_current = TRUE AND is_quarantined = FALSE
+        ),
+
+        filtered_transactions AS (
+            SELECT SRC_TransactionID, EncounterID, PatientID, Amount, PaidAmount, datasource,
+                   PARSE_DATE('%d-%m-%Y', VisitDate) AS VisitDate,
+                   PARSE_DATE('%d-%m-%Y', ServiceDate) AS ServiceDate,
+                   PARSE_DATE('%d-%m-%Y', PaidDate) AS PaidDate
+            FROM `avd-databricks-demo.silver_dataset.transactions`
+            WHERE is_current = TRUE AND is_quarantined = FALSE
+              AND modified_date >= lookback_timestamp
+        ),
+
+        current_claims AS (
+            SELECT TransactionID, ClaimStatus, PayorType, ClaimAmount, PaidAmount, datasource
+            FROM `avd-databricks-demo.silver_dataset.claims`
+            WHERE is_current = TRUE AND is_quarantined = FALSE
+        )
+
+        SELECT 
+            p.Patient_Key, p.FirstName, p.LastName, p.MiddleName, p.Gender, p.DOB, p.Address,
+            e.EncounterID, e.EncounterDate,
+            COALESCE(e.EncounterType, 'Unknown') AS EncounterType,
+            COALESCE(pr.Doctor_Name, 'Unknown Doctor') AS Doctor,
+            t.SRC_TransactionID AS TransactionID, t.VisitDate, t.ServiceDate, t.PaidDate,
+            CAST(t.Amount AS NUMERIC) AS BilledAmount,
+            CAST(t.PaidAmount AS NUMERIC) AS PaidAmount,
+            CAST(c.ClaimAmount AS NUMERIC) AS ClaimAmount,
+            CAST(c.PaidAmount AS NUMERIC) AS ClaimPaidAmount,
+            COALESCE(c.ClaimStatus, 'No Claim File') AS ClaimStatus,
+            COALESCE(c.PayorType, 'Not Listed') AS PayorType
+        FROM filtered_patients AS p
+        LEFT JOIN filtered_encounters AS e 
+            ON p.SRC_PatientID = e.PatientID AND p.datasource = e.datasource
+        LEFT JOIN current_providers AS pr 
+            ON e.ProviderID = pr.Clean_ProviderID AND e.datasource = pr.datasource
+        LEFT JOIN filtered_transactions AS t 
+            ON e.EncounterID = t.EncounterID AND e.datasource = t.datasource
+        LEFT JOIN current_claims AS c 
+            ON t.SRC_TransactionID = c.TransactionID AND t.datasource = c.datasource
+        WHERE e.EncounterDate >= lookback_date
+    ) AS staging
+
+    ON target.EncounterDate >= lookback_date
+    AND target.Patient_Key = staging.Patient_Key
+    AND COALESCE(target.EncounterID, 'N/A') = COALESCE(staging.EncounterID, 'N/A')
+
+    WHEN MATCHED THEN
+        UPDATE SET
+            target.FirstName = staging.FirstName,
+            target.LastName = staging.LastName,
+            target.Address = staging.Address,
+            target.BilledAmount = staging.BilledAmount,
+            target.PaidAmount = staging.PaidAmount,
+            target.ClaimAmount = staging.ClaimAmount,
+            target.ClaimPaidAmount = staging.ClaimPaidAmount,
+            target.ClaimStatus = staging.ClaimStatus,
+            target.PayorType = staging.PayorType
+
+    WHEN NOT MATCHED THEN
+        INSERT (
+            Patient_Key, FirstName, LastName, MiddleName, Gender, DOB, Address,
+            EncounterID, EncounterDate, EncounterType, Doctor,
+            TransactionID, VisitDate, ServiceDate, PaidDate, BilledAmount, PaidAmount,
+            ClaimAmount, ClaimPaidAmount, ClaimStatus, PayorType
+        )
+        VALUES (
+            staging.Patient_Key, staging.FirstName, staging.LastName, staging.MiddleName, staging.Gender, staging.DOB, staging.Address,
+            staging.EncounterID, staging.EncounterDate, staging.EncounterType, staging.Doctor,
+            staging.TransactionID, staging.VisitDate, staging.ServiceDate, staging.PaidDate, staging.BilledAmount, staging.PaidAmount,
+            staging.ClaimAmount, staging.ClaimPaidAmount, staging.ClaimStatus, staging.PayorType
+        );
+    """
+
+    # Task definition to run the script inside BigQuery
+    run_gold_patient_history = BigQueryExecuteQueryOperator(
+        task_id='execute_gold_patient_history',
+        sql=sql_script,
+        use_legacy_sql=False,
+        gcp_conn_id='google_cloud_default',  # Connection name configured in Airflow admin
+        location='US',                       # Adjust this to your BigQuery dataset location (e.g., 'EU', 'asia-south1')
+    )
+
+    run_gold_patient_history
+
+🔍 Crucial Production Elements Explained
+Jinja Weekday Evaluation:
+The snippet {{ 'False' if dag_run.execution_date.strftime('%u') == '1' else 'True' }} dynamically injects either False or True directly into your query string right before it is dispatched to BigQuery. %u is the ISO weekday number where 1 represents Monday.
+catchup=False:
+An essential configuration rule for incremental processes. If your DAG is paused for 10 days and turned back on, turning catchup off prevents Airflow from firing 10 concurrent backfill jobs, which would cause heavy write lock conflicts on your production BigQuery partitions.
+
+In data engineering and SQL, backfilling is the process of retroactively populating historical data into a newly created table, a modified column, or an empty time partition. [1, 2, 3, 4, 5] 
+When you build a new SQL pipeline, it natively processes data starting today. A backfill is a one-time operation designed to travel backward in time to populate all the missing historical records from previous years. [6, 7] 
+------------------------------
+## 🚨 Real-World Examples of Backfilling
+## 1. The New Column Scenario
+You have a patients table that has been running for 5 years. Today, your team decides to add a new column called Age_Group.
+
+* The Problem: New rows will get the age group calculated automatically, but the 5 years of existing rows will show up as NULL.
+* The Backfill: You write a one-off UPDATE or MERGE SQL statement to calculate and fill in the Age_Group column for all historical rows.
+
+## 2. Switching from Full Refresh to Incremental (Your Current Setup)
+When we converted your patient_history script from a TRUNCATE + INSERT to an Incremental MERGE, the incremental script was configured to look back only 3 days. [8, 9] 
+
+* The Problem: If you deploy this code into an environment where the target Gold table is empty, your daily script will run perfectly but the table will only contain data from the last 3 days. You are missing years of history.
+* The Backfill: You run a one-time execution where you intentionally pass is_incremental_run = FALSE (or set the lookback window to 10 years). This forces the system to pull all historical data and load it into the Gold partitions. Once complete, you flip the toggle back to incremental for normal daily operations. [10, 11, 12] 
+
+------------------------------
+## ⚠️ The Risks of Backfilling in Production
+Backfilling is notoriously resource-heavy and dangerous if done incorrectly. Engineers must consider several guardrails:
+
+* Compute & Cost Spikes: If you have 500 million rows of transaction data, running a single backfill statement will force BigQuery to scan terabytes of data at once, resulting in massive slot utilization and a high cloud bill.
+* Production Table Lockups: Running a massive historical update can lock up or slow down a table, causing downstream BI dashboards or operational applications to timeout.
+* The "Chunking" Strategy: To avoid crashing databases, senior engineers don't backfill everything at once. They run the backfill in chunks using a loop (e.g., backfilling exactly 1 month of historical data at a time, sleeping for a minute, then processing the next month).
+
+
+
+
+

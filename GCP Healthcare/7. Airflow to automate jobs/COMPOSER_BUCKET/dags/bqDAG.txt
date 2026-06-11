@@ -1,0 +1,211 @@
+While BigQueryInsertJobOperator is most commonly used to run SQL queries, it can execute any valid BigQuery configuration job, 
+including:Querying data (SELECT, DML like INSERT/UPDATE/DELETE, and DDL like CREATE TABLE)Loading data from Google Cloud Storage into 
+BigQuery tablesExtracting/Exporting data from BigQuery tables out to Google Cloud StorageCopying tables across datasets or regions
+
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
+
+# Production Constants
+PROJECT_ID = "avd-databricks-demo"
+LOCATION = "US"  # BigQuery dataset location (multi-region US)
+
+# Default configuration applied across all operators
+DEFAULT_ARGS = {
+    "owner": "DEBABRATA ADAK",
+    "start_date": datetime(2026, 1, 1),
+    "depends_on_past": False,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "email": ["***@gmail.com"],
+    "email_on_success": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5)
+}
+
+# Industry Best Practice: Define template_searchpath to load SQL files safely via Jinja.
+# Airflow automatically scans this path relative to your environment's dags folder.
+with DAG(
+    dag_id="bigquery_medallion_pipeline",
+    schedule_interval=None,
+    description="Orchestrates Bronze, Silver, and Gold BigQuery layers sequentially.",
+    default_args=DEFAULT_ARGS,
+    catchup=False,
+    template_searchpath=["/home/airflow/gcs/data/BQ/"], 
+    tags=["gcp", "bigquery", "etl", "medallion"]
+) as dag:
+
+    # 1. Bronze Layer Task
+    run_bronze_layer = BigQueryInsertJobOperator(
+        task_id="run_bronze_layer",
+        configuration={
+            "query": {
+                "query": "bronze.sql",  # Loaded natively via Jinja template engine
+                "useLegacySql": False,
+                "priority": "BATCH"
+            }
+        },
+        location=LOCATION
+    )
+			
+    # 2. Silver Layer Task
+    run_silver_layer = BigQueryInsertJobOperator(
+        task_id="run_silver_layer",
+        configuration={
+            "query": {
+                "query": "silver.sql",  # Loaded natively via Jinja template engine
+                "useLegacySql": False,
+                "priority": "BATCH"
+            }
+        },
+        location=LOCATION
+    )
+			
+    # 3. Gold Layer Task
+    run_gold_layer = BigQueryInsertJobOperator(
+        task_id="run_gold_layer",
+        configuration={
+            "query": {
+                "query": "gold.sql",  # Loaded natively via Jinja template engine
+                "useLegacySql": False,
+                "priority": "BATCH"
+            }
+        },
+        location=LOCATION
+    )
+
+    # Clean, explicit downstream dependency pipeline execution
+    run_bronze_layer >> run_silver_layer >> run_gold_layer
+
+
+
+
+
+
+
+
+
+
+
+
+##################################
+0. Library Imports
+#Every DAG script begins by importing the core components, operators, and required date utilities.
+import airflow
+from airflow import DAG
+from datetime import timedelta
+from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
+
+# 1. Global Configurations
+
+PROJECT_ID = "avd-databricks-demo"
+REGION = "us-east1"
+LOCATION = "US"
+#Because your BigQuery operator executes queries against a specific location, you may want to explicitly pass location="US" or 
+location="us-east1" inside your BigQueryInsertJobOperator parameters if your target BigQuery datasets are not located in your project's 
+default region.
+CLUSTER_NAME = "my-demo-cluster"
+COMPOSER_BUCKET = "us-central1-demo-instance-a649b781-bucket"
+
+# Define path to your  script and any helper files inside GCS
+# Using hardcoded local paths like /home/airflow/gcs/... makes your code completely unportable.
+bronzePath = "/home/airflow/gcs/data/BQ/bronze.sql"
+silverPath = "/home/airflow/gcs/data/BQ/silver.sql"
+goldPath = "/home/airflow/gcs/data/BQ/gold.sql"
+
+#To understand /home/airflow/gcs, it helps to know that Google Cloud Composer does a clever trick behind the scenes using a technology 
+called Cloud Storage FUSE.
+When you upload a file into your GCS bucket web console under the data/ folder, it instantly appears inside your Airflow code at 
+/home/airflow/gcs/data/.
+Your Python function (open(file_path, "r")) thinks it is reading a file from a local hard drive, but it is actually fetching it directly 
+from the cloud.
+Every Cloud Composer environment creates one dedicated storage bucket. The folders map exactly like this:
+Where you put it in the Cloud Bucket 		How Airflow sees it locally
+(gs://your-bucket/)							(/home/airflow/gcs/)
+gs://your-bucket/dags/						/home/airflow/gcs/dags/
+gs://your-bucket/data/						/home/airflow/gcs/data/
+gs://your-bucket/plugins/					/home/airflow/gcs/plugins/
+
+#Why did Google build it this way?
+It makes your code simple. Instead of writing complex GCP download steps inside your Python code to pull SQL text from the web, you can 
+just use standard Python file commands like with open() as if the file were sitting right next to your code.
+
+2. Default Configuration Arguments
+A Python dictionary defines settings that are automatically passed down and applied to all tasks within the DAG, keeping the code clean 
+and maintainable.
+
+ARGS = {
+    "owner": "DEBABRATA ADAK",
+	#Airflow requires a fixed, concrete static date (like datetime(2026, 1, 1)) to initialize a DAG. Setting it to None causes a crash.
+    "start_date": datetime(2026, 1, 1),
+    "depends_on_past": False,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "email": ["***@gmail.com"],
+    "email_on_success": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5)
+}
+
+
+# 3. DAG Definition
+with DAG(
+    dag_id="bigquery_dag",
+    schedule_interval=None, #Parent DAG will handle the scheduling.
+    description="DAG to run the bigquery jobs",
+    default_args=ARGS,
+    tags=["gcs", "bq", "etl", "marvel"]
+) as dag:
+
+# 4. Helper Functions
+	def read_sql_file(sqlPath):
+		with open(sqlPath,'r') as sql:
+			return sql.read()
+
+# Because Airflow parses the entire DAG file every few seconds to check for changes, Airflow will read your physical SQL files from disk dozens of times a minute. This causes high CPU usage and webserver slowdowns.
+# 5. Task Instantiation
+silverTask = BigQueryInsertJobOperator(
+				task_id="silver_tables",
+				configuration={
+					"query": {
+						"query": read_sql_file(silverPath),
+						"useLegacySql": False,
+						"priority": "BATCH"
+							}
+				}
+			)
+			
+bronzeTask = BigQueryInsertJobOperator(
+				task_id="bronze_tables",
+				configuration={
+					"query": {
+						"query": read_sql_file(bronzePath),
+						"useLegacySql": False,
+						"priority": "BATCH"
+					}
+				}
+			)
+			
+goldTask = BigQueryInsertJobOperator(
+				task_id="gold_tables",
+				configuration={
+					"query": {
+						"query": read_sql_file(goldPath),
+						"useLegacySql": False,
+						"priority": "BATCH"
+					}
+				}
+			)
+
+# 6. Graph Topology
+bronzeTask >> silverTask >> goldTask
+
+Jinja Templating (template_searchpath): Instead of a custom Python function reading from disk on every heartbeat, we configured template_searchpath. Airflow will now read bronze.sql, silver.sql, and gold.sql only when the task actually executes.
+1. BigQuery does not use Dataproc Clusters
+You defined CLUSTER_NAME = "my-demo-cluster" and REGION = "us-east1". These parameters are required when you deploy Dataproc Spark jobs. However, your tasks are executing pure SQL jobs via BigQueryInsertJobOperator. BigQuery is serverless—it does not need a Dataproc cluster or a cluster region to run SQL queries.
+
+2. BigQuery uses LOCATION, not REGION
+BigQuery handles data processing boundaries differently than compute engines like Dataproc or Cloud Functions. It uses data storage processing zones (US multi-region, EU multi-region, or single regions like us-central1). Passing a compute region parameter to BigQuery configurations can cause pipeline execution failures.
+
+3. Airflow reads from /home/airflow/gcs/ locally
+You defined COMPOSER_BUCKET = "us-central1-demo-instance-a649b781-bucket". Cloud Composer automatically mounts your underlying Google Cloud Storage bucket directly onto the Airflow workers' local directory layout under the absolute system alias /home/airflow/gcs/.Because Airflow views this bucket path as a local file folder, your script references /home/airflow/gcs/data/BQ/ natively. Explicitly declaring the raw gs:// bucket name string inside this specific pipeline is completely redundant.

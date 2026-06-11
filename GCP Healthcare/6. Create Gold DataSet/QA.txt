@@ -1,0 +1,29 @@
+Question 1: System Architecture & Metric Integrity"We were looking over some older code for the department_performance and provider_performance tables. The previous developer left-joined both the encounters and transactions tables directly to the parent table. You changed this to a sequential chain: joining parent to encounters, then encounters to transactions, and finally transactions to claims.Why is joining encounters and transactions independently to a parent entity considered a critical bug, and what happens to our financial KPIs (like TotalBilledAmount) if we deploy that old code to production?"
+"The old approach causes a severe Cartesian fan-out bug. Because a patient or provider can have multiple independent encounters and multiple independent financial transactions, joining both tables directly to the parent root causes rows to multiply exponentially. For example, if a provider has 5 encounters and 5 transactions, an independent join creates 25 rows instead of 5. In production, this would drastically inflate our financial KPIs—like TotalBilledAmount—by double- or triple-counting the same dollar amounts. By chaining the joins hierarchically—where transactions link to encounters, and claims link to transactions—we preserve the true transactional grain of the ledger."
+
+Question 2: Cloud Optimization & Cost ControlLet's move on to the next architecture choice."In your production MERGE statements for tables like payor_performance and department_performance, you didn't just filter the main tables by a modified date. Instead, you built a temporary CTE block called updated_facilities_flag or updated_payors_flag to isolate modified IDs first, and then inner-joined that flag back to your main tables.Why did you choose this design pattern instead of simply running a standard WHERE modified_date >= lookback_timestamp across the entire query? How does this impact BigQuery slot utilization and cost?"
+"If we simply used a WHERE modified_date >= lookback_timestamp on an unpartitioned aggregation query, BigQuery would still have to compute the sums across the entire historical table structure to grouping them. By using the updated_payors_flag CTE, we create an operational delta gate. We find the specific IDs that changed over the last 3 days, and then inner join that tiny list back to our source data. This forces BigQuery to skip processing the historical records of the other 95% of unchanged payors entirely. It radically minimizes slot utilization and slashes costs. Additionally, by executing this within a single MERGE statement instead of a TRUNCATE, we completely eliminate dashboard downtime—guaranteeing that historical metrics are queryable by business users even while updates are being committed."
+
+Question 3: Multi-Tenancy & Data GovernanceLet’s wrap up with a data integrity question that is massive in healthcare networks."Throughout your pipeline transformations, you strictly enforced joining tables using both the primary natural key (like PatientID or EncounterID) AND the datasource column. Alternatively, you generated a composite surrogate key like CONCAT(PatientID, '-', datasource).Why is it a critical risk to join data purely on the raw PatientID or EncounterID when consolidating data from multiple hospital systems like HospitalA and HospitalB?"
+"Because both entities are operating systems within the same domain (healthcare), they naturally use identical ID patterns—such as sequential numbers or standard formatting like HOSP1-000001. If we join purely on those raw IDs, an identifier collision across networks is inevitable, resulting in multi-tenant cross-contamination where Patient X from Hospital A gets combined with the medical and financial records of Patient Y from Hospital B. This is a severe compliance violation. Utilizing a composite surrogate key built from the ID and the datasource guarantees absolute tenant isolation, preserves clinical boundaries, and enables accurate down-stream reporting on individual facility performance metrics."
+
+WHY quaranatine is used??
+In data engineering—especially when moving data from a raw Bronze layer to a cleaned Silver layer—a quarantine strategy is used to handle corrupted, incomplete, or invalid data without breaking your data pipeline.Instead of letting bad data crash your pipeline or pollute your clean business tables, you flag it, isolate it, and keep the system moving.Here is exactly why quarantine is a critical design pattern:
+
+1. Prevents Pipeline FailuresIf you try to process an invalid date (like 31-02-2025) or a missing critical key through strict business logic or aggregations later in your pipeline, your production jobs will fail. Quarantine acts as a safety net that catches these errors gracefully.
+2. Protects Data Integrity (Downstream Systems)Data in the Silver and Gold layers is directly consumed by business analysts, machine learning models, and executive dashboards. If bad data gets through, it leads to:Inaccurate metrics (e.g., calculation errors because a crucial financial or medical field was NULL).Broken joins (e.g., missing Patient IDs preventing cross-referencing with medication tables).
+3. Enables Data Governance & AuditingInstead of simply deleting or dropping bad records (which loses information and creates data gaps), quarantine preserves them. Data quality teams can easily run queries to see what went wrong, why it failed, and which upstream source system sent the bad data.
+4. Simplifies Re-processing (Reprocessing Loop)Once the engineering team or the source provider (like Hospital A or Hospital B) fixes the root cause of the bad records, you can easily filter your data lake for is_quarantined = TRUE, fix the values, and re-run them into the clean Silver layer without reprocessing millions of good records.
+
+
+
+
+
+
+
+
+
+
+
+
+

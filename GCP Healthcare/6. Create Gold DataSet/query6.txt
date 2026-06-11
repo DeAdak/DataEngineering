@@ -1,0 +1,219 @@
+-- 6. Payor Performance & Claims Summary (Gold): This table tracks the performance of insurance payors, focusing on claim approval rates, payout amounts, and processing efficiency.
+
+avd-databricks-demo.silver_dataset.claims
+---------
+Claim_Key				SRC_ClaimID	TransactionID	PatientID		EncounterID	ProviderID	DeptID	ServiceDate	ClaimDate	PayorID				ClaimAmount	PaidAmount	
+CLAIM000001-HospitalA 	CLAIM000001	TRANS007657		HOSP1-001026	ENC002703	PROV0190	DEPT009	22-07-2024	26-03-2024	Medicare			680.31		538.5		
+CLAIM000002-HospitalA 	CLAIM000002	TRANS004722		HOSP1-000299	ENC001313	PROV0260	DEPT002	21-05-2024	10-05-2024	BlueCross			3871.53		3028.71		
+CLAIM000001-HospitalB 	CLAIM000001	TRANS001819		HOSP1-001494	ENC001805	PROV0242	DEPT007	26-08-2024	05-10-2024	UnitedHealthcare	4600.39		3228.9		
+CLAIM000002-HospitalB 	CLAIM000002	TRANS003384		HOSP1-000208	ENC001914	PROV0487	DEPT002	03-05-2024	23-04-2024	Medicare			4987.94		3969.49		
+
+ClaimStatus	PayorType	Deductible	Coinsurance	Copay	SRC_InsertDate	SRC_ModifiedDate	datasource	is_quarantined	modified_date	inserted_date	is_current
+Pending		Self-pay	279.32		170.77		13.01	15-06-2022		03-03-2024			HospitalA	FALSE			
+Approved	Private		250.16		100.11		11.37	13-11-2023		15-05-2023			HospitalA	FALSE
+Approved	Government	101.31		99.56		45.99	13-01-2023		10-01-2020			HospitalB	FALSE
+Paid		Private		125.13		96.39		30.87	03-10-2024		08-02-2023			HospitalB	FALSE
+
+-- =========================================================================
+-- SYSTEM CONFIGURATION PARAMETERS (Passed by your Orchestrator)
+-- =========================================================================
+DECLARE is_incremental_run BOOL DEFAULT TRUE; -- Toggle: TRUE = Fast Merge, FALSE = Full History Rebuild
+DECLARE lookback_days INT64 DEFAULT 3;         -- Length of rolling safety window for incremental runs
+
+-- Internal operational variables
+DECLARE lookback_timestamp TIMESTAMP;
+
+-- Calculate execution windows dynamically
+IF is_incremental_run THEN
+  SET lookback_timestamp = TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL lookback_days DAY);
+ELSE
+  SET lookback_timestamp = TIMESTAMP('1970-01-01 00:00:00 UTC');
+END IF;
+
+
+-- =========================================================================
+-- STEP 1: DESTINATION INFRASTRUCTURE INITIALIZATION (DDL)
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.gold_dataset.payor_performance` (
+    Payor_Key               STRING    OPTIONS(description="Unique business composite identifier"),
+    PayorID                 STRING    OPTIONS(description="The unique identifier for the insurance payor (e.g. Medicare, BlueCross)"),
+    PayorType               STRING    OPTIONS(description="Classification category (e.g. Private, Government, Self-pay)"),
+    TotalClaimsSubmitted    INT64     OPTIONS(description="Total distinct claims sent to this payor"),
+    TotalClaimsApproved     INT64     OPTIONS(description="Total distinct claims approved or paid by this payor"),
+    ClaimApprovalRate       NUMERIC   OPTIONS(description="Percentage of submitted claims that were approved/paid"),
+    TotalClaimedAmount      NUMERIC   OPTIONS(description="The total gross money billed to the insurance payor"),
+    TotalPaidAmount         NUMERIC   OPTIONS(description="The actual monetary payout collected from the payor"),
+    AverageProcessingDays   NUMERIC   OPTIONS(description="Average days elapsed between Service Date and Claim Submission Date")
+)
+CLUSTER BY Payor_Key; -- Optimized for instant BI dashboard and lookup performance
+
+
+-- =========================================================================
+-- STEP 2: DYNAMIC EXECUTION CONTROL
+-- =========================================================================
+IF NOT is_incremental_run THEN
+  -- Complete wipeout executed only during full historical loads
+  TRUNCATE TABLE `avd-databricks-demo.gold_dataset.payor_performance`;
+END IF;
+
+
+-- =========================================================================
+-- STEP 3: UNIFIED IDEMPOTENT DATA PROCESSING LAYER (DML MERGE)
+-- =========================================================================
+MERGE INTO `avd-databricks-demo.gold_dataset.payor_performance` AS target
+USING (
+    -- 1. Identify which payor networks had modifications within the incremental lookback window
+    WITH updated_payors_flag AS (
+        SELECT DISTINCT PayorID, datasource
+        FROM `avd-databricks-demo.silver_dataset.claims`
+        WHERE modified_date >= lookback_timestamp 
+          AND is_current = TRUE 
+          AND is_quarantined = FALSE
+          AND PayorID IS NOT NULL
+    ),
+
+    -- 2. Extract and parse operational claims strictly for targeted payors
+    verified_claims_data AS (
+        SELECT 
+            CONCAT(c.PayorID, '-', c.datasource) AS Payor_Key,
+            c.PayorID,
+            c.PayorType,
+            c.SRC_ClaimID,
+            c.ClaimStatus,
+            CAST(c.ClaimAmount AS NUMERIC) AS ClaimAmount,
+            CAST(c.PaidAmount AS NUMERIC) AS PaidAmount,
+            SAFE.PARSE_DATE('%d-%m-%Y', c.ServiceDate) AS parsed_service_date,
+            SAFE.PARSE_DATE('%d-%m-%Y', c.ClaimDate) AS parsed_claim_date
+        FROM `avd-databricks-demo.silver_dataset.claims` AS c
+        INNER JOIN updated_payors_flag AS upf
+            ON c.PayorID = upf.PayorID 
+            AND c.datasource = upf.datasource
+        WHERE c.is_current = TRUE 
+          AND c.is_quarantined = FALSE
+    )
+
+    -- 3. Run localized analytical aggregations
+    SELECT 
+        Payor_Key,
+        PayorID,
+        MAX(PayorType) AS PayorType, -- Aggregate fallback grouping strategy
+        COUNT(DISTINCT SRC_ClaimID) AS TotalClaimsSubmitted,
+        COUNT(DISTINCT CASE WHEN ClaimStatus IN ('Approved', 'Paid') THEN SRC_ClaimID END) AS TotalClaimsApproved,
+        
+        ROUND(
+            (COUNT(DISTINCT CASE WHEN ClaimStatus IN ('Approved', 'Paid') THEN SRC_ClaimID END) / 
+            NULLIF(COUNT(DISTINCT SRC_ClaimID), 0)) * 100, 2
+        ) AS ClaimApprovalRate,
+        
+        ROUND(SUM(ClaimAmount), 2) AS TotalClaimedAmount,
+        ROUND(SUM(PaidAmount), 2) AS TotalPaidAmount,
+        
+        ROUND(
+            CAST(AVG(DATE_DIFF(parsed_claim_date, parsed_service_date, DAY)) AS NUMERIC), 1
+        ) AS AverageProcessingDays
+    FROM verified_claims_data
+    GROUP BY Payor_Key, PayorID
+) AS staging
+ON target.Payor_Key = staging.Payor_Key
+
+-- MATCH BLOCK: Overwrites operational metric profiles if the payor entity already exists
+WHEN MATCHED THEN
+    UPDATE SET
+        target.PayorType = staging.PayorType,
+        target.TotalClaimsSubmitted = staging.TotalClaimsSubmitted,
+        target.TotalClaimsApproved = staging.TotalClaimsApproved,
+        target.ClaimApprovalRate = staging.ClaimApprovalRate,
+        target.TotalClaimedAmount = staging.TotalClaimedAmount,
+        target.TotalPaidAmount = staging.TotalPaidAmount,
+        target.AverageProcessingDays = staging.AverageProcessingDays
+
+-- NOT MATCHED BLOCK: Inserts a fresh tracking profile if a new payor record initializes
+WHEN NOT MATCHED THEN
+    INSERT (
+        Payor_Key, PayorID, PayorType, TotalClaimsSubmitted, TotalClaimsApproved, 
+        ClaimApprovalRate, TotalClaimedAmount, TotalPaidAmount, AverageProcessingDays
+    )
+    VALUES (
+        staging.Payor_Key, staging.PayorID, staging.PayorType, staging.TotalClaimsSubmitted, staging.TotalClaimsApproved, 
+        staging.ClaimApprovalRate, staging.TotalClaimedAmount, staging.TotalPaidAmount, staging.AverageProcessingDays
+    );
+
+Why this configuration satisfies Production Code Reviews
+Protects Analytics from Date Nulls: 
+Using SAFE.PARSE_DATE shields the pipeline from syntax termination crashes if a hospital records a bad text string like 'UNKNOWN' into the date field. DATE_DIFF will cleanly bypass empty variables inside the AVG loop.
+Micro-Scoped Compute Slices: 
+Because insurance companies process huge transaction streams, isolating shifts inside the updated_payors_flag CTE drops query overhead from a full scan of millions of lines down to a tight, high-speed subset.
+
+
+
+
+##------------------------------------------------------------------------------------------------------------------------##
+Step 1: Create the Gold Target Table (DDL)
+CREATE OR REPLACE TABLE `avd-databricks-demo.gold_dataset.payor_performance` (
+    PayorID             	STRING    	OPTIONS(description="The unique identifier for the insurance payor (e.g. Medicare, BlueCross)"),
+    PayorType           	STRING    	OPTIONS(description="Classification category (e.g. Private, Government, Self-pay)"),
+    TotalClaimsSubmitted 	INT64    	OPTIONS(description="Total distinct claims sent to this payor"),
+    TotalClaimsApproved  	INT64    	OPTIONS(description="Total distinct claims approved or paid by this payor"),
+    ClaimApprovalRate   	FLOAT64   	OPTIONS(description="Percentage of submitted claims that were approved/paid"),
+    TotalClaimedAmount  	NUMERIC   	OPTIONS(description="The total gross money billed to the insurance payor"),
+    TotalPaidAmount     	NUMERIC   	OPTIONS(description="The actual monetary payout collected from the payor"),
+    AverageProcessingDays 	FLOAT64 	OPTIONS(description="Average days elapsed between Service Date and Claim Submission Date")
+);
+
+##------------------------------------------------------------------------------------------------------------------------##
+Step 2: Extract, Clean, and Populate the Table (DML)
+INSERT INTO `avd-databricks-demo.gold_dataset.payor_performance`
+
+WITH verified_claims_data AS (
+    SELECT 
+        PayorID,
+        PayorType,
+        SRC_ClaimID,
+        ClaimStatus,
+        CAST(ClaimAmount AS NUMERIC) AS ClaimAmount,
+        CAST(PaidAmount AS NUMERIC) AS PaidAmount,
+        -- Safe date parsing to convert 'DD-MM-YYYY' string attributes into functional dates
+        SAFE.PARSE_DATE('%d-%m-%Y', ServiceDate) AS parsed_service_date,
+        SAFE.PARSE_DATE('%d-%m-%Y', ClaimDate) AS parsed_claim_date
+    FROM `avd-databricks-demo.silver_dataset.claims`
+    WHERE is_quarantined = FALSE 
+      AND PayorID IS NOT NULL
+)
+
+SELECT 
+    PayorID,
+    MAX(PayorType) AS PayorType, -- Aggregate fallback grouping strategy
+    COUNT(DISTINCT SRC_ClaimID) AS TotalClaimsSubmitted,
+    COUNT(DISTINCT CASE WHEN ClaimStatus IN ('Approved', 'Paid') THEN SRC_ClaimID END) AS TotalClaimsApproved,
+    
+    -- 1. Calculate Claim Approval Rate
+    ROUND(
+        COUNT(DISTINCT CASE WHEN ClaimStatus IN ('Approved', 'Paid') THEN SRC_ClaimID END) / 
+        NULLIF(COUNT(DISTINCT SRC_ClaimID), 0) * 100, 2
+    ) AS ClaimApprovalRate,
+    
+    -- 2. Aggregate Financial Payout Totals
+    SUM(ClaimAmount) AS TotalClaimedAmount,
+    SUM(PaidAmount) AS TotalPaidAmount,
+    
+    -- 3. Calculate Processing Efficiency (Average Days Elapsed)
+    ROUND(
+        AVG(DATE_DIFF(parsed_claim_date, parsed_service_date, DAY)), 1
+    ) AS AverageProcessingDays
+
+FROM verified_claims_data
+GROUP BY PayorID;
+##------------------------------------------------------------------------------------------------------------------------##
+Key Safeguards inside this Architecture:
+Safe Date Handling: Using SAFE.PARSE_DATE prevents the entire data warehouse pipeline from crashing if a row contains an invalid date value like 31-02-2024.
+Accurate Averages: The AVG(DATE_DIFF(...)) metric computes processing speeds directly from granular rows, providing an accurate look at operational bottlenecks.
+No Fan-Out Duplication: The script aggregates data entirely within the boundaries of the claims table to prevent table duplication or inflated currency figures.
+##------------------------------------------------------------------------------------------------------------------------##
+
+Architectural Improvements Applied
+Dynamic Delta Isolation (updated_payors_flag): 
+Instead of scanning and aggregating your entire historical claims ledger every night, the script scans the last 3 days of changes to isolate exactly which PayorID profiles encountered transactional updates. It then updates only those rows in the Gold table.
+SCD Type 2 Compliance: 
+Added strict filters (is_current = TRUE and is_quarantined = FALSE) so that expired historical variations or dead quarantine records do not pollute active corporate dashboards.
+Compound Key Safety: 
+Standardized the target table lookup using a composite business key Payor_Key (CONCAT(PayorID, '-', datasource)). This handles situations where different hospital branches (datasource) process the same insurance entity independently.

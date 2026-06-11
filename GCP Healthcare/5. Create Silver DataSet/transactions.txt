@@ -1,0 +1,567 @@
+HospitalA
+---------
+TransactionID  EncounterID  PatientID	  ProviderID  DeptID   VisitDate   ServiceDate  PaidDate	VisitType  Amount  AmountType  PaidAmount  
+TRANS000001	   ENC001204	HOSP1-002372  PROV0456	  DEPT002  02-08-2024  25-05-2024	15-06-2024  Routine	   988.36  Medicare	   315.70	   
+TRANS000002	   ENC000029	HOSP1-002329  PROV0321 	  DEPT013  02-05-2024  14-09-2024	19-09-2024	Emergency  291.26  Medicare	   667.98	   
+
+ClaimID	       PayorID	    ProcedureCode ICDCode	  LineOfBusiness  MedicaidID  MedicareID  InsertDate  ModifiedDate
+CLAIM533365	   PAYOR4707    94521		  I19.4	      Commercial	  MEDI24173	  MCARE19466  16-01-2021  27-12-2021
+CLAIM629724	   PAYOR1481    51588		  I54.0		  Self-Pay		  MEDI63110	  MCARE97946  06-02-2021  26-01-2022
+	
+
+HospitalB
+---------
+TransactionID  EncounterID  PatientID	  ProviderID  DeptID   VisitDate   ServiceDate  PaidDate	VisitType	Amount	AmountType	PaidAmount	
+TRANS000001	   ENC000512	HOSP1-002609  PROV0434	  DEPT016  31-08-2024  03-04-2024	06-02-2024	Follow-up	616.86	Self-pay	234.57		
+TRANS000002	   ENC009236	HOSP1-004031  PROV0382	  DEPT017  10-04-2024  25-08-2024	01-02-2024	Follow-up	680.41	Insurance	445.86		
+
+ClaimID		   PayorID	    ProcedureCode ICDCode	  LineOfBusiness  MedicaidID  MedicareID  InsertDate  ModifiedDate
+CLAIM879364	   PAYOR9066    93411		  I95.4		  Commercial	  MEDI13625	  MCARE38344  01-10-2021  15-01-2024
+CLAIM835197	   PAYOR1013    86401		  I39.5		  Self-Pay		  MEDI20311	  MCARE53178  20-03-2020  29-01-2023
+
+
+Bronze to Silver transition
+---------------------------
+BRONZE 				combine_tables 			quality_checks 			SILVER
+-------				--------------			--------------			-------
+										 ++ Transaction_Key			Transaction_Key
+TransactionID	-->	SRC_TransactionID		SRC_TransactionID		SRC_TransactionID
+EncounterID			EncounterID				EncounterID				EncounterID
+PatientID			PatientID				PatientID				PatientID
+ProviderID			ProviderID				ProviderID				ProviderID
+DeptID				DeptID					DeptID					DeptID
+VisitDate			VisitDate				VisitDate				VisitDate
+ServiceDate			ServiceDate				ServiceDate				ServiceDate
+PaidDate			PaidDate				PaidDate				PaidDate
+VisitType			VisitType				VisitType				VisitType
+Amount				Amount					Amount					Amount
+AmountType			AmountType				AmountType				AmountType
+PaidAmount			PaidAmount				PaidAmount				PaidAmount
+ClaimID				ClaimID					ClaimID					ClaimID
+PayorID				PayorID					PayorID					PayorID
+ProcedureCode		ProcedureCode			ProcedureCode			ProcedureCode
+ICDCode				ICDCode					ICDCode					ICDCode
+LineOfBusiness		LineOfBusiness			LineOfBusiness			LineOfBusiness
+MedicaidID			MedicaidID				MedicaidID				MedicaidID
+MedicareID			MedicareID				MedicareID				MedicareID
+InsertDate		-->	SRC_InsertDate			SRC_InsertDate			SRC_InsertDate
+ModifiedDate	-->	SRC_ModifiedDate		SRC_ModifiedDate		SRC_ModifiedDate
+				 ++ datasource				datasource				datasource
+				 ++ is_quarantine			is_quarantine			is_quarantine
+																 ++ inserted_date
+																 ++ modified_date
+																 ++ is_current
+
+Create SILVER table
+--------------------
+CREATE TABLE IF NOT EXISTS `avd-databricks-demo.silver_dataset.transactions` (
+	Transaction_Key		STRING,
+    SRC_TransactionID	STRING,
+    EncounterID         STRING,
+    PatientID           STRING,
+    ProviderID          STRING,
+    DeptID              STRING,
+    VisitDate           DATE,
+    ServiceDate         DATE,
+    PaidDate            DATE,
+    VisitType           STRING,
+    Amount              NUMERIC,
+    AmountType          STRING,
+    PaidAmount          NUMERIC,
+    ClaimID             STRING,
+    PayorID             STRING,
+    ProcedureCode       INT64,
+    ICDCode             STRING,
+    LineOfBusiness      STRING,
+    MedicaidID          STRING,
+    MedicareID          STRING,
+    SRC_InsertDate      DATE,
+    SRC_ModifiedDate    DATE,
+    datasource          STRING,
+    is_quarantine       BOOL,
+    inserted_date       TIMESTAMP,
+    modified_date       TIMESTAMP,
+    is_current          BOOL
+	)
+	PARTITION BY DATE(inserted_date)
+	CLUSTER BY SRC_TransactionID;
+	
+Create temporary tables combine_tables & quality_checks
+------------------------------------------------------
+WITH combine_tables AS (), quality_checks AS ()
+
+WITH combine_tables AS (
+	SELECT
+	TransactionID AS SRC_TransactionID	,
+	EncounterID			,
+	PatientID			,
+	ProviderID			,
+	DeptID				,
+	PARSE_DATE('%d-%m-%Y',VisitDate) AS VisitDate		,
+	PARSE_DATE('%d-%m-%Y',ServiceDate) AS ServiceDate	,
+	PARSE_DATE('%d-%m-%Y',PaidDate) AS PaidDate			,
+	VisitType			,
+	SAFE_CAST(Amount AS NUMERIC) AS Amount,
+	AmountType			,
+	SAFE_CAST(PaidAmount AS NUMERIC) AS PaidAmount	,
+	ClaimID				,
+	PayorID				,
+	SAFE_CAST(ProcedureCode	AS INT64) AS ProcedureCode	,
+	ICDCode				,
+	LineOfBusiness		,
+	MedicaidID			,
+	MedicareID			,
+	PARSE_DATE('%d-%m-%Y',SRC_InsertDate) AS SRC_InsertDate		,
+	PARSE_DATE('%d-%m-%Y',SRC_ModifiedDate)	AS SRC_InsertDate	,
+	'HospitalA' AS datasource,
+	(TransactionID IS NULL OR PatientID IS NULL OR EncounterID IS NULL OR VisitDate IS NULL) AS is_quarantine		,
+	FROM `avd-databricks-demo.bronze_dataset.transactions_ha`
+	
+	UNION ALL
+	
+	SELECT 
+	TransactionID AS SRC_TransactionID	,
+	EncounterID			,
+	PatientID			,
+	ProviderID			,
+	DeptID				,
+	PARSE_DATE('%d-%m-%Y',VisitDate) AS VisitDate		,
+	PARSE_DATE('%d-%m-%Y',ServiceDate) AS ServiceDate	,
+	PARSE_DATE('%d-%m-%Y',PaidDate) AS PaidDate			,
+	VisitType			,
+	SAFE_CAST(Amount AS NUMERIC) AS Amount,
+	AmountType			,
+	SAFE_CAST(PaidAmount AS NUMERIC) AS PaidAmount	,
+	ClaimID				,
+	PayorID				,
+	SAFE_CAST(ProcedureCode	AS INT64) AS ProcedureCode	,
+	ICDCode				,
+	LineOfBusiness		,
+	MedicaidID			,
+	MedicareID			,
+	PARSE_DATE('%d-%m-%Y',SRC_InsertDate) AS SRC_InsertDate		,
+	PARSE_DATE('%d-%m-%Y',SRC_ModifiedDate)	AS SRC_InsertDate	,
+	'HospitalB' AS datasource,
+	(TransactionID IS NULL OR PatientID IS NULL OR EncounterID IS NULL OR VisitDate IS NULL) AS is_quarantine		,
+	FROM `avd-databricks-demo.bronze_dataset.transactions_hb`)
+	,
+	quality_checks AS (
+	SELECT
+	CONCAT(SRC_TransactionID,'-',datasource) AS Transaction_Key,	
+	SRC_TransactionID	,	
+	EncounterID			,
+	PatientID			,
+	ProviderID			,
+	DeptID				,
+	VisitDate			,
+	ServiceDate			,
+	PaidDate			,
+	VisitType			,
+	Amount				,
+	AmountType			,
+	PaidAmount			,
+	ClaimID				,
+	PayorID				,
+	ProcedureCode		,
+	ICDCode				,
+	LineOfBusiness		,
+	MedicaidID			,
+	MedicareID			,
+	SRC_InsertDate		,
+	SRC_ModifiedDate	,
+	datasource			,
+	is_quarantine		
+	FROM combine_tables
+	)
+
+Creating staging table
+---------------------
+	SELECT
+	Transaction_Key AS Merge_Key,
+	Transaction_Key		,	
+	SRC_TransactionID	,	
+	EncounterID			,
+	PatientID			,
+	ProviderID			,
+	DeptID				,
+	VisitDate			,
+	ServiceDate			,
+	PaidDate			,
+	VisitType			,
+	Amount				,
+	AmountType			,
+	PaidAmount			,
+	ClaimID				,
+	PayorID				,
+	ProcedureCode		,
+	ICDCode				,
+	LineOfBusiness		,
+	MedicaidID			,
+	MedicareID			,
+	SRC_InsertDate		,
+	SRC_ModifiedDate	,
+	datasource			,
+	is_quarantine		
+	FROM FROM quality_checks
+	
+	UNION ALL
+	
+	SELECT
+	NULL AS Merge_Key	,
+	Transaction_Key		,	
+	SRC_TransactionID	,	
+	EncounterID			,
+	PatientID			,
+	ProviderID			,
+	DeptID				,
+	VisitDate			,
+	ServiceDate			,
+	PaidDate			,
+	VisitType			,
+	Amount				,
+	AmountType			,
+	PaidAmount			,
+	ClaimID				,
+	PayorID				,
+	ProcedureCode		,
+	ICDCode				,
+	LineOfBusiness		,
+	MedicaidID			,
+	MedicareID			,
+	SRC_InsertDate		,
+	SRC_ModifiedDate	,
+	datasource			,
+	is_quarantine		
+	
+	FROM quality_checks AS source
+	
+	JOIN `avd-databricks-demo.silver_dataset.transactions` AS target
+	ON target.Transaction_Key = source.Transaction_Key AND target.is_current = TRUE
+	
+	WHERE FARM_FINGETPRINT(TO_JSON_STRING(STRUCT(
+	source.SRC_TransactionID	,	
+	source.EncounterID			,
+	source.PatientID			,
+	source.ProviderID			,
+	source.DeptID				,
+	source.VisitDate			,
+	source.ServiceDate			,
+	source.PaidDate				,
+	source.VisitType			,
+	source.Amount				,
+	source.AmountType			,
+	source.PaidAmount			,
+	source.ClaimID				,
+	source.PayorID				,
+	source.ProcedureCode		,
+	source.ICDCode				,
+	source.LineOfBusiness		,
+	source.MedicaidID			,
+	source.MedicareID			,
+	source.SRC_InsertDate		,
+	source.SRC_ModifiedDate		,
+	source.datasource			,
+	source.is_quarantine	
+	)))
+	!=
+	FARM_FINGETPRINT(TO_JSON_STRING(STRUCT(
+	target.SRC_TransactionID	,	
+	target.EncounterID			,
+	target.PatientID			,
+	target.ProviderID			,
+	target.DeptID				,
+	target.VisitDate			,
+	target.ServiceDate			,
+	target.PaidDate				,
+	target.VisitType			,
+	target.Amount				,
+	target.AmountType			,
+	target.PaidAmount			,
+	target.ClaimID				,
+	target.PayorID				,
+	target.ProcedureCode		,
+	target.ICDCode				,
+	target.LineOfBusiness		,
+	target.MedicaidID			,
+	target.MedicareID			,
+	target.SRC_InsertDate		,
+	target.SRC_ModifiedDate		,
+	target.datasource			,
+	target.is_quarantine	
+	)))
+	
+Now put all this under USING() and name it AS staging:
+------------------------------------------------------
+MERGE INTO `avd-databricks-demo.silver_dataset.patients` AS target
+USING ( ) AS staging
+ON target.Merge_Key = staging.Merge_Key AND target.is_current = TRUE
+WHWN MATCHED THEN UPDATE SET target.is_current = FLASE, target.inserted_date = CURRENT_TIMESTAMP()
+WHEN NOT MATCHED THEN INSERT (target columns) VALUES (staging values,CURRENT_TIMESTAMP(),CURRENT_TIMESTAMP(),TRUE)
+
+
+Implementation:
+---------------	
+MERGE INTO `avd-databricks-demo.silver_dataset.patients` AS target
+USING(
+	WITH combine_tables AS (
+	SELECT
+	TransactionID AS SRC_TransactionID	,
+	EncounterID			,
+	PatientID			,
+	ProviderID			,
+	DeptID				,
+	PARSE_DATE('%d-%m-%Y',VisitDate) AS VisitDate		,
+	PARSE_DATE('%d-%m-%Y',ServiceDate) AS ServiceDate	,
+	PARSE_DATE('%d-%m-%Y',PaidDate) AS PaidDate			,
+	VisitType			,
+	SAFE_CAST(Amount AS NUMERIC) AS Amount,
+	AmountType			,
+	SAFE_CAST(PaidAmount AS NUMERIC) AS PaidAmount	,
+	ClaimID				,
+	PayorID				,
+	SAFE_CAST(ProcedureCode	AS INT64) AS ProcedureCode	,
+	ICDCode				,
+	LineOfBusiness		,
+	MedicaidID			,
+	MedicareID			,
+	PARSE_DATE('%d-%m-%Y',SRC_InsertDate) AS SRC_InsertDate		,
+	PARSE_DATE('%d-%m-%Y',SRC_ModifiedDate)	AS SRC_InsertDate	,
+	'HospitalA' AS datasource,
+	(TransactionID IS NULL OR PatientID IS NULL OR EncounterID IS NULL OR VisitDate IS NULL) AS is_quarantine		,
+	FROM `avd-databricks-demo.bronze_dataset.transactions_ha`
+	
+	UNION ALL
+	
+	SELECT 
+	TransactionID AS SRC_TransactionID	,
+	EncounterID			,
+	PatientID			,
+	ProviderID			,
+	DeptID				,
+	PARSE_DATE('%d-%m-%Y',VisitDate) AS VisitDate		,
+	PARSE_DATE('%d-%m-%Y',ServiceDate) AS ServiceDate	,
+	PARSE_DATE('%d-%m-%Y',PaidDate) AS PaidDate			,
+	VisitType			,
+	SAFE_CAST(Amount AS NUMERIC) AS Amount,
+	AmountType			,
+	SAFE_CAST(PaidAmount AS NUMERIC) AS PaidAmount	,
+	ClaimID				,
+	PayorID				,
+	SAFE_CAST(ProcedureCode	AS INT64) AS ProcedureCode	,
+	ICDCode				,
+	LineOfBusiness		,
+	MedicaidID			,
+	MedicareID			,
+	PARSE_DATE('%d-%m-%Y',SRC_InsertDate) AS SRC_InsertDate		,
+	PARSE_DATE('%d-%m-%Y',SRC_ModifiedDate)	AS SRC_InsertDate	,
+	'HospitalB' AS datasource,
+	(TransactionID IS NULL OR PatientID IS NULL OR EncounterID IS NULL OR VisitDate IS NULL) AS is_quarantine		,
+	FROM `avd-databricks-demo.bronze_dataset.transactions_hb`)
+	,
+	quality_checks AS (
+	SELECT
+	CONCAT(SRC_TransactionID,'-',datasource) AS Transaction_Key,	
+	SRC_TransactionID	,	
+	EncounterID			,
+	PatientID			,
+	ProviderID			,
+	DeptID				,
+	VisitDate			,
+	ServiceDate			,
+	PaidDate			,
+	VisitType			,
+	Amount				,
+	AmountType			,
+	PaidAmount			,
+	ClaimID				,
+	PayorID				,
+	ProcedureCode		,
+	ICDCode				,
+	LineOfBusiness		,
+	MedicaidID			,
+	MedicareID			,
+	SRC_InsertDate		,
+	SRC_ModifiedDate	,
+	datasource			,
+	is_quarantine		
+	FROM combine_tables
+	)
+	-- Sub-query 1: Rows destined to insert as brand NEW records or overwrite completely new keys	
+	SELECT
+	Transaction_Key AS Merge_Key,
+	Transaction_Key		,	
+	SRC_TransactionID	,	
+	EncounterID			,
+	PatientID			,
+	ProviderID			,
+	DeptID				,
+	VisitDate			,
+	ServiceDate			,
+	PaidDate			,
+	VisitType			,
+	Amount				,
+	AmountType			,
+	PaidAmount			,
+	ClaimID				,
+	PayorID				,
+	ProcedureCode		,
+	ICDCode				,
+	LineOfBusiness		,
+	MedicaidID			,
+	MedicareID			,
+	SRC_InsertDate		,
+	SRC_ModifiedDate	,
+	datasource			,
+	is_quarantine		
+	FROM FROM quality_checks
+	
+	UNION ALL
+	-- Sub-query 2: Rows destined to expire the historical record (forces a MATCH block invocation)
+	SELECT
+	NULL AS Merge_Key	,
+	Transaction_Key		,	
+	SRC_TransactionID	,	
+	EncounterID			,
+	PatientID			,
+	ProviderID			,
+	DeptID				,
+	VisitDate			,
+	ServiceDate			,
+	PaidDate			,
+	VisitType			,
+	Amount				,
+	AmountType			,
+	PaidAmount			,
+	ClaimID				,
+	PayorID				,
+	ProcedureCode		,
+	ICDCode				,
+	LineOfBusiness		,
+	MedicaidID			,
+	MedicareID			,
+	SRC_InsertDate		,
+	SRC_ModifiedDate	,
+	datasource			,
+	is_quarantine		
+	
+	FROM quality_checks AS source
+	
+	JOIN `avd-databricks-demo.silver_dataset.transactions` AS target
+	ON target.Transaction_Key = source.Transaction_Key AND target.is_current = TRUE
+	WHERE FARM_FINGETPRINT(TO_JSON_STRING(STRUCT(
+	source.SRC_TransactionID	,	
+	source.EncounterID			,
+	source.PatientID			,
+	source.ProviderID			,
+	source.DeptID				,
+	source.VisitDate			,
+	source.ServiceDate			,
+	source.PaidDate				,
+	source.VisitType			,
+	source.Amount				,
+	source.AmountType			,
+	source.PaidAmount			,
+	source.ClaimID				,
+	source.PayorID				,
+	source.ProcedureCode		,
+	source.ICDCode				,
+	source.LineOfBusiness		,
+	source.MedicaidID			,
+	source.MedicareID			,
+	source.SRC_InsertDate		,
+	source.SRC_ModifiedDate		,
+	source.datasource			,
+	source.is_quarantine	
+	)))
+	!=
+	FARM_FINGETPRINT(TO_JSON_STRING(STRUCT(
+	target.SRC_TransactionID	,	
+	target.EncounterID			,
+	target.PatientID			,
+	target.ProviderID			,
+	target.DeptID				,
+	target.VisitDate			,
+	target.ServiceDate			,
+	target.PaidDate				,
+	target.VisitType			,
+	target.Amount				,
+	target.AmountType			,
+	target.PaidAmount			,
+	target.ClaimID				,
+	target.PayorID				,
+	target.ProcedureCode		,
+	target.ICDCode				,
+	target.LineOfBusiness		,
+	target.MedicaidID			,
+	target.MedicareID			,
+	target.SRC_InsertDate		,
+	target.SRC_ModifiedDate		,
+	target.datasource			,
+	target.is_quarantine	
+	)))
+		) AS staging
+ON target.Transaction_Key = staging.Merge_Key AND target.is_current = TRUE
+
+-- When Merge_Key matches, it means a change occurred: close out the active record.
+WHEN MATCHED THEN UPDATE SET target.is_current = FALSE, target.modified_date = CURENT_TIMESTAMP()
+
+-- When Merge_Key is NULL (from Sub-query 2) or doesn't exist, insert the fresh version.
+WHEN NOT MATCHED THEN INSERT (
+	Transaction_Key		,
+    SRC_TransactionID   ,
+    EncounterID         ,
+    PatientID           ,
+    ProviderID          ,
+    DeptID              ,
+    VisitDate           ,
+    ServiceDate         ,
+    PaidDate            ,
+    VisitType           ,
+    Amount              ,
+    AmountType          ,
+    PaidAmount          ,
+    ClaimID             ,
+    PayorID             ,
+    ProcedureCode       ,
+    ICDCode             ,
+    LineOfBusiness      ,
+    MedicaidID          ,
+    MedicareID          ,
+    SRC_InsertDate      ,
+    SRC_ModifiedDate    ,
+    datasource          ,
+    is_quarantine       ,
+    inserted_date       ,
+    modified_date       ,
+	is_current			
+	) 
+	
+	VALUES (
+	
+	staging.Transaction_Key		,
+	staging.SRC_TransactionID	,
+    staging.EncounterID         ,
+	staging.PatientID           ,
+    staging.ProviderID          ,
+    staging.DeptID              ,
+    staging.VisitDate           ,
+    staging.ServiceDate         ,
+    staging.PaidDate            ,
+    staging.VisitType           ,
+    staging.Amount              ,
+    staging.AmountType          ,
+    staging.PaidAmount          ,
+    staging.ClaimID             ,
+    staging.PayorID             ,
+    staging.ProcedureCode       ,
+    staging.ICDCode             ,
+    staging.LineOfBusiness      ,
+    staging.MedicaidID          ,
+    staging.MedicareID          ,
+    staging.SRC_InsertDate      ,
+    staging.SRC_ModifiedDate    ,
+    staging.datasource          ,
+    staging.is_quarantine       ,
+    CURENT_TIMESTAMP()          ,
+    CURENT_TIMESTAMP()          ,
+	TRUE);
