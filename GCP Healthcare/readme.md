@@ -3,6 +3,53 @@
 An end-to-end, production-ready healthcare data engineering platform built on Google Cloud Platform (GCP). This project implements a three-tier **Medallion Lakehouse Architecture (Bronze → Silver → Gold)** to process structured patient encounters, institutional claims, and hospital transactions from relational operational databases into analytical data marts.
 
 ---
+graph LR
+    %% Data Source Layer
+    subgraph Data Sources [1. Operational Layer]
+        A[<img src='https://githubusercontent.com' width='40'/><br>Cloud SQL<br>MySQL / Postgres]
+    end
+
+    %% Ingestion Layer
+    subgraph Ingestion [2. Landing & Processing]
+        B[<img src='https://githubusercontent.com' width='40'/><br>Cloud Storage<br>GCS Buckets]
+        C[<img src='https://githubusercontent.com' width='40'/><br>Dataproc Cluster<br>Parallel PySpark]
+    end
+
+    %% Medallion Warehouse Layer
+    subgraph Warehouse [3. BigQuery Medallion Warehouse]
+        D[<img src='https://githubusercontent.com' width='40'/><br>Bronze Dataset<br>Raw Append-Only]
+        E[<img src='https://githubusercontent.com' width='40'/><br>Silver Dataset<br>Cleaned SCD Type 2]
+        F[<img src='https://githubusercontent.com' width='40'/><br>Gold Dataset<br>Analytical Marts]
+    end
+
+    %% Orchestration Backbone
+    subgraph Control [Orchestration Backbone]
+        O[<img src='https://githubusercontent.com' width='40'/><br>Apache Airflow<br>Cloud Composer]
+    end
+
+    %% Flow Dependencies
+    A -->|Batch Extraction| B
+    B -->|Compute Ingestion| C
+    C -->|Structured Load| D
+    D -->|SCD Type 2 Merge & Quality Check| E
+    E -->|Aggregations & Views| F
+
+    %% Orchestration Links
+    O -.->|Schedules & Triggers| A
+    O -.->|Deploys Ephemeral Compute| C
+    O -.->|Executes Query Jobs| D
+    O -.->|Executes Query Jobs| E
+    O -.->|Executes Query Jobs| F
+
+    %% Style Customizations
+    style O fill:#fff,stroke:#017ce4,stroke-width:2px
+    style A fill:#fff,stroke:#4285F4,stroke-width:2px
+    style B fill:#fff,stroke:#4285F4,stroke-width:2px
+    style C fill:#fff,stroke:#4285F4,stroke-width:2px
+    style D fill:#fff,stroke:#4285F4,stroke-width:2px
+    style E fill:#fff,stroke:#4285F4,stroke-width:2px
+    style F fill:#fff,stroke:#4285F4,stroke-width:2px
+
 <img width="1532" height="688" alt="Flowchart" src="https://github.com/user-attachments/assets/1acc19ad-71fb-4945-91da-897c3a27ee05" />
 
 ## 🏗️ System Architecture & Data Flow
