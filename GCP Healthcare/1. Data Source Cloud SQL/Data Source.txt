@@ -9,6 +9,19 @@ I omitted NOT NULL constraints to prevent potential system failures based on the
 If you want to enforce strict data integrity, you should only apply NOT NULL to the core structural fields that must always EXISTS from day one.
 Like IDs, Visit dates,
 
+Using the CONSTRAINT keyword to declare a primary key is not creating a second or "another" primary key. Instead, it is just a different, more powerful way to write the syntax for your one and only primary key.You use the CONSTRAINT syntax instead of the shortcut version for three critical reasons:
+. It Lets You Name the Key (Crucial for Maintenance)If you use the shortcut method (EmployeeID INT PRIMARY KEY), the database system automatically generates a random, cryptic name for your key behind the scenes (like PK__Employee__7AD04FF11A).If you ever need to change or delete that primary key later, you have to hunt down that random name. Using CONSTRAINT lets you choose a clean, predictable name:
+-- Explicitly naming the key "PK_Employees"
+CONSTRAINT PK_Employees PRIMARY KEY (EmployeeID)
+It is Required for Composite Keys (Multiple Columns)The shortcut method only works if your primary key is a single column. If your primary key requires a combination of two or more columns to be unique, the shortcut will fail. You must use the table-level CONSTRAINT syntax to group them.Example: In a student enrollment table, a student can take multiple classes, and a class has multiple students. Neither ID is unique on its own, but the combination is:
+CREATE TABLE Enrollment (
+    StudentID INT,
+    CourseID INT,
+    -- The shortcut cannot do this:
+    CONSTRAINT PK_Enrollment PRIMARY KEY (StudentID, CourseID)
+);
+. Clean Code OrganizationDefining constraints at the bottom of your CREATE TABLE statement separates what data the columns hold (data types like INT, VARCHAR) from how the business rules link them together (constraints). This makes complex table schemas much easier for human
+
 HospitalA
 ---------++++++++++++++++++++
 1. Departments.csv
